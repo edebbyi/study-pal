@@ -1,0 +1,5 @@
+.streamlit/secrets.toml
+.studypal_cache/
+myenv/
+__pycache__/
+.pytest_cache/

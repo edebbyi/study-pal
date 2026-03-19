@@ -1,0 +1,31 @@
+# Web app
+streamlit
+
+# LLM + OpenRouter compatible client
+openai
+
+# Postgres
+psycopg
+
+# Data validation / structured outputs
+pydantic
+pydantic-ai
+
+# Vector database
+pinecone
+
+# PDF parsing
+pypdf
+
+# Token counting / chunk sizing
+tiktoken
+
+# Observability
+langfuse
+openlit
+
+# Testing
+pytest
+
+# Code quality
+pylint
