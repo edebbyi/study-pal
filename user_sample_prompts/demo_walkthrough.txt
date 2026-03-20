@@ -1,0 +1,29 @@
+1. Upload `anatomy_example.pdf`.
+
+2. Ask:
+What is the medulla?
+
+3. Confirm the answer includes citations.
+
+4. Follow up with:
+Generate a quiz for me please.
+
+5. Confirm the app switches into the interactive mastery checkpoint instead of returning a plain text quiz.
+
+6. Submit one incorrect answer and two correct answers.
+
+7. Confirm the app shows:
+- latest checkpoint score
+- weak concepts
+- reteach guidance
+- a reinforcement quiz
+
+8. Complete the next round with correct answers.
+
+9. Confirm the app generates a study plan with citations.
+
+10. Rate one assistant response with:
+- Very helpful
+- optional text feedback
+
+11. Confirm the feedback appears in the Feedback Admin page.
