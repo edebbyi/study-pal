@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 
-import openlit
 from langfuse import get_client
 
 from src.core.config import settings
@@ -155,6 +154,10 @@ def initialize_observability() -> bool:
     try:
         langfuse = get_client()
         if not langfuse.auth_check():
+            return False
+        try:
+            import openlit
+        except ModuleNotFoundError:
             return False
         openlit.init(disable_batch=True)  # Avoid batching to keep traces near-real-time.
     except Exception:
