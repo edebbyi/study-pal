@@ -1,3 +1,5 @@
+"""conftest.py: Pytest fixtures and shared test helpers."""
+
 from __future__ import annotations
 
 import sys

@@ -1,7 +1,12 @@
+"""test_planning.py: Tests for test_planning.py."""
+
 from src.planning import build_study_plan
 
 
 def test_build_study_plan_prioritizes_weak_concepts() -> None:
+    """Test build study plan prioritizes weak concepts.
+    """
+
     study_plan = build_study_plan(
         "Photosynthesis",
         ["light reactions", "glucose production"],
@@ -16,6 +21,9 @@ def test_build_study_plan_prioritizes_weak_concepts() -> None:
 
 
 def test_build_study_plan_handles_perfect_mastery() -> None:
+    """Test build study plan handles perfect mastery.
+    """
+
     study_plan = build_study_plan(
         "Photosynthesis",
         [],

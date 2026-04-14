@@ -1,3 +1,5 @@
+"""test_vector_store.py: Tests for test_vector_store.py."""
+
 from __future__ import annotations
 
 from src.vector_store import rebuild_document_library_from_remote
@@ -16,9 +18,21 @@ class FakeFetchResponse:
 
 class FakeIndex:
     def list(self, limit: int = 100):
+        """List.
+        
+        Args:
+            limit (int): Test fixture or parameter.
+        """
+
         yield ["session-1-0", "session-1-1"]
 
     def fetch(self, ids: list[str]):
+        """Fetch.
+        
+        Args:
+            ids (list[str]): Test fixture or parameter.
+        """
+
         return FakeFetchResponse(
             {
                 "session-1-0": FakeVector(
@@ -58,6 +72,12 @@ class FakeIndex:
 
 
 def test_rebuild_document_library_from_remote_groups_chunks_into_workspace(monkeypatch) -> None:
+    """Test rebuild document library from remote groups chunks into workspace.
+    
+    Args:
+        monkeypatch: Test fixture or parameter.
+    """
+
     monkeypatch.setattr(vector_store, "get_pinecone_index", lambda: FakeIndex())
 
     workspaces = rebuild_document_library_from_remote()

@@ -1,8 +1,13 @@
+"""test_document_metadata.py: Tests for test_document_metadata.py."""
+
 from src.document_metadata import detect_chapters, extract_document_metadata
 from src.models import Document, Page
 
 
 def test_detect_chapters_carries_forward_latest_chapter() -> None:
+    """Test detect chapters carries forward latest chapter.
+    """
+
     document = Document(
         filename="anatomy_example.pdf",
         session_id="abc123",
@@ -22,6 +27,9 @@ def test_detect_chapters_carries_forward_latest_chapter() -> None:
 
 
 def test_extract_document_metadata_falls_back_without_model() -> None:
+    """Test extract document metadata falls back without model.
+    """
+
     document = Document(
         filename="anatomy_example.pdf",
         session_id="abc123",

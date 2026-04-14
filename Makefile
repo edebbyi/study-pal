@@ -3,10 +3,16 @@ run:
 install:
 	pip install -r requirements.txt
 lint:
-	pylint src
+	ruff check .
 format:
 	black .
 test:
 	pytest
+dev:
+	docker compose up --build
+dev-up:
+	docker compose up --force-recreate
+dev-down:
+	docker compose down
 clean:
 	find . -type d -name "__pycache__" -exec rm -r {} +

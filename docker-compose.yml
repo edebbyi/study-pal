@@ -1,0 +1,15 @@
+services:
+  studypal:
+    build: .
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    volumes:
+      - ./:/app
+      - studypal_cache:/app/.studypal_cache
+    # If you prefer secrets.toml, uncomment the line below.
+    # - ./.streamlit/secrets.toml:/app/.streamlit/secrets.toml:ro
+
+volumes:
+  studypal_cache:

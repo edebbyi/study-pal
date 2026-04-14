@@ -1,3 +1,5 @@
+"""test_index_cache.py: Tests for test_index_cache.py."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -36,6 +38,13 @@ def _build_indexed_document() -> IndexedDocument:
 
 
 def test_index_cache_round_trip(tmp_path: Path, monkeypatch) -> None:
+    """Test index cache round trip.
+    
+    Args:
+        tmp_path (Path): Test fixture or parameter.
+        monkeypatch: Test fixture or parameter.
+    """
+
     cache_dir = tmp_path / "cache"
     cache_file = cache_dir / "document_library.json"
     monkeypatch.setattr(index_cache, "cache_directory", cache_dir)
@@ -82,6 +91,13 @@ def test_index_cache_round_trip(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_index_cache_returns_none_for_invalid_payload(tmp_path: Path, monkeypatch) -> None:
+    """Test index cache returns none for invalid payload.
+    
+    Args:
+        tmp_path (Path): Test fixture or parameter.
+        monkeypatch: Test fixture or parameter.
+    """
+
     cache_dir = tmp_path / "cache"
     cache_file = cache_dir / "document_library.json"
     cache_dir.mkdir()
@@ -93,6 +109,13 @@ def test_index_cache_returns_none_for_invalid_payload(tmp_path: Path, monkeypatc
 
 
 def test_index_cache_restores_legacy_single_document_payload(tmp_path: Path, monkeypatch) -> None:
+    """Test index cache restores legacy single document payload.
+    
+    Args:
+        tmp_path (Path): Test fixture or parameter.
+        monkeypatch: Test fixture or parameter.
+    """
+
     cache_dir = tmp_path / "cache"
     library_file = cache_dir / "document_library.json"
     legacy_file = cache_dir / "last_indexed_document.json"

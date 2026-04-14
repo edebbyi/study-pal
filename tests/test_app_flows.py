@@ -1,3 +1,5 @@
+"""test_app_flows.py: Tests for test_app_flows.py."""
+
 from __future__ import annotations
 
 import app
@@ -58,6 +60,12 @@ def _initialize_fake_session_state(monkeypatch) -> SessionState:
 
 
 def test_handle_question_routes_ask_query_and_clears_mastery_state(monkeypatch) -> None:
+    """Test handle question routes ask query and clears mastery state.
+    
+    Args:
+        monkeypatch: Test fixture or parameter.
+    """
+
     state = _initialize_fake_session_state(monkeypatch)
     state.study_topic = "Old topic"
     state.mastery_intro = "Old intro"
@@ -96,6 +104,12 @@ def test_handle_question_routes_ask_query_and_clears_mastery_state(monkeypatch) 
 
 
 def test_handle_question_routes_mastery_query_through_agent_start(monkeypatch) -> None:
+    """Test handle question routes mastery query through agent start.
+    
+    Args:
+        monkeypatch: Test fixture or parameter.
+    """
+
     state = _initialize_fake_session_state(monkeypatch)
     quiz = _build_quiz("Checkpoint Quiz: Photosynthesis", "Photosynthesis")
     mastery_session = MasterySession(
@@ -130,6 +144,12 @@ def test_handle_question_routes_mastery_query_through_agent_start(monkeypatch) -
 
 
 def test_handle_question_reuses_previous_topic_for_referential_mastery_prompt(monkeypatch) -> None:
+    """Test handle question reuses previous topic for referential mastery prompt.
+    
+    Args:
+        monkeypatch: Test fixture or parameter.
+    """
+
     state = _initialize_fake_session_state(monkeypatch)
     state.conversation_topic = "Motor Function"
 
@@ -145,6 +165,16 @@ def test_handle_question_reuses_previous_topic_for_referential_mastery_prompt(mo
         question: str,
         fallback_topic: str | None = None,
     ) -> tuple[MasterySession, MasteryProgress]:
+        """Fake start mastery loop.
+        
+        Args:
+            question (str): Test fixture or parameter.
+            fallback_topic (str | None): Test fixture or parameter.
+        
+        Returns:
+            tuple[MasterySession, MasteryProgress]: Result value.
+        """
+
         assert question == "quiz me on this please"
         assert fallback_topic == "Motor Function"
         return (
@@ -181,6 +211,12 @@ def test_handle_question_reuses_previous_topic_for_referential_mastery_prompt(mo
 
 
 def test_handle_question_routes_generate_quiz_prompt_into_mastery(monkeypatch) -> None:
+    """Test handle question routes generate quiz prompt into mastery.
+    
+    Args:
+        monkeypatch: Test fixture or parameter.
+    """
+
     state = _initialize_fake_session_state(monkeypatch)
     state.conversation_topic = "Medulla"
 
@@ -196,6 +232,16 @@ def test_handle_question_routes_generate_quiz_prompt_into_mastery(monkeypatch) -
         question: str,
         fallback_topic: str | None = None,
     ) -> tuple[MasterySession, MasteryProgress]:
+        """Fake start mastery loop.
+        
+        Args:
+            question (str): Test fixture or parameter.
+            fallback_topic (str | None): Test fixture or parameter.
+        
+        Returns:
+            tuple[MasterySession, MasteryProgress]: Result value.
+        """
+
         assert question == "generate a quiz please"
         assert fallback_topic == "Medulla"
         return (
@@ -226,6 +272,12 @@ def test_handle_question_routes_generate_quiz_prompt_into_mastery(monkeypatch) -
 
 
 def test_handle_question_routes_generate_quiz_for_me_prompt_into_mastery(monkeypatch) -> None:
+    """Test handle question routes generate quiz for me prompt into mastery.
+    
+    Args:
+        monkeypatch: Test fixture or parameter.
+    """
+
     state = _initialize_fake_session_state(monkeypatch)
     state.conversation_topic = "Medulla"
 
@@ -241,6 +293,16 @@ def test_handle_question_routes_generate_quiz_for_me_prompt_into_mastery(monkeyp
         question: str,
         fallback_topic: str | None = None,
     ) -> tuple[MasterySession, MasteryProgress]:
+        """Fake start mastery loop.
+        
+        Args:
+            question (str): Test fixture or parameter.
+            fallback_topic (str | None): Test fixture or parameter.
+        
+        Returns:
+            tuple[MasterySession, MasteryProgress]: Result value.
+        """
+
         assert question == "generate a quiz for me please"
         assert fallback_topic == "Medulla"
         return (
@@ -271,6 +333,12 @@ def test_handle_question_routes_generate_quiz_for_me_prompt_into_mastery(monkeyp
 
 
 def test_handle_question_routes_make_a_quiz_on_this_topic_prompt_into_mastery(monkeypatch) -> None:
+    """Test handle question routes make a quiz on this topic prompt into mastery.
+    
+    Args:
+        monkeypatch: Test fixture or parameter.
+    """
+
     state = _initialize_fake_session_state(monkeypatch)
     state.conversation_topic = "Spinal Cord"
 
@@ -286,6 +354,16 @@ def test_handle_question_routes_make_a_quiz_on_this_topic_prompt_into_mastery(mo
         question: str,
         fallback_topic: str | None = None,
     ) -> tuple[MasterySession, MasteryProgress]:
+        """Fake start mastery loop.
+        
+        Args:
+            question (str): Test fixture or parameter.
+            fallback_topic (str | None): Test fixture or parameter.
+        
+        Returns:
+            tuple[MasterySession, MasteryProgress]: Result value.
+        """
+
         assert question == "make a quiz on this topic please"
         assert fallback_topic == "Spinal Cord"
         return (
@@ -316,6 +394,12 @@ def test_handle_question_routes_make_a_quiz_on_this_topic_prompt_into_mastery(mo
 
 
 def test_handle_question_routes_make_me_a_quiz_please_into_mastery_with_fallback_topic(monkeypatch) -> None:
+    """Test handle question routes make me a quiz please into mastery with fallback topic.
+    
+    Args:
+        monkeypatch: Test fixture or parameter.
+    """
+
     state = _initialize_fake_session_state(monkeypatch)
     state.conversation_topic = "Spinal Cord"
 
@@ -331,6 +415,16 @@ def test_handle_question_routes_make_me_a_quiz_please_into_mastery_with_fallback
         question: str,
         fallback_topic: str | None = None,
     ) -> tuple[MasterySession, MasteryProgress]:
+        """Fake start mastery loop.
+        
+        Args:
+            question (str): Test fixture or parameter.
+            fallback_topic (str | None): Test fixture or parameter.
+        
+        Returns:
+            tuple[MasterySession, MasteryProgress]: Result value.
+        """
+
         assert question == "make me a quiz please"
         assert fallback_topic == "Spinal Cord"
         return (
@@ -361,6 +455,12 @@ def test_handle_question_routes_make_me_a_quiz_please_into_mastery_with_fallback
 
 
 def test_handle_question_uses_recent_message_topic_when_explicit_topic_state_is_missing(monkeypatch) -> None:
+    """Test handle question uses recent message topic when explicit topic state is missing.
+    
+    Args:
+        monkeypatch: Test fixture or parameter.
+    """
+
     state = _initialize_fake_session_state(monkeypatch)
     state.conversation_topic = None
     state.study_topic = None
@@ -381,6 +481,16 @@ def test_handle_question_uses_recent_message_topic_when_explicit_topic_state_is_
         question: str,
         fallback_topic: str | None = None,
     ) -> tuple[MasterySession, MasteryProgress]:
+        """Fake start mastery loop.
+        
+        Args:
+            question (str): Test fixture or parameter.
+            fallback_topic (str | None): Test fixture or parameter.
+        
+        Returns:
+            tuple[MasterySession, MasteryProgress]: Result value.
+        """
+
         assert question == "generate a quiz for me please"
         assert fallback_topic == "Medulla"
         return (
@@ -406,6 +516,12 @@ def test_handle_question_uses_recent_message_topic_when_explicit_topic_state_is_
 
 
 def test_submit_quiz_answers_advances_mastery_loop(monkeypatch) -> None:
+    """Test submit quiz answers advances mastery loop.
+    
+    Args:
+        monkeypatch: Test fixture or parameter.
+    """
+
     state = _initialize_fake_session_state(monkeypatch)
     current_quiz = _build_quiz("Checkpoint Quiz: Photosynthesis", "Photosynthesis")
     next_quiz = _build_quiz("Reinforcement Quiz: Photosynthesis", "Photosynthesis")
@@ -415,6 +531,17 @@ def test_submit_quiz_answers_advances_mastery_loop(monkeypatch) -> None:
         quiz_result: QuizResult,
         current_round: int,
     ) -> MasteryProgress:
+        """Fake advance mastery progress.
+        
+        Args:
+            topic (str): Test fixture or parameter.
+            quiz_result (QuizResult): Test fixture or parameter.
+            current_round (int): Test fixture or parameter.
+        
+        Returns:
+            MasteryProgress: Result value.
+        """
+
         assert topic == "Photosynthesis"
         assert current_round == 1
         assert quiz_result.score == 0
@@ -446,6 +573,12 @@ def test_submit_quiz_answers_advances_mastery_loop(monkeypatch) -> None:
 
 
 def test_submit_quiz_answers_and_stop_session_build_study_plans(monkeypatch) -> None:
+    """Test submit quiz answers and stop session build study plans.
+    
+    Args:
+        monkeypatch: Test fixture or parameter.
+    """
+
     state = _initialize_fake_session_state(monkeypatch)
     current_quiz = _build_quiz("Checkpoint Quiz: Photosynthesis", "Photosynthesis")
     generated_plan = StudyPlan(
@@ -513,6 +646,12 @@ def test_submit_quiz_answers_and_stop_session_build_study_plans(monkeypatch) -> 
 
 
 def test_submit_response_feedback_persists_structured_record(monkeypatch) -> None:
+    """Test submit response feedback persists structured record.
+    
+    Args:
+        monkeypatch: Test fixture or parameter.
+    """
+
     state = _initialize_fake_session_state(monkeypatch)
     state.active_document_id = "doc-1"
     state.uploaded_sources = ["anatomy_example.pdf"]
@@ -553,6 +692,12 @@ def test_submit_response_feedback_persists_structured_record(monkeypatch) -> Non
 
 
 def test_main_restores_last_indexed_document_on_reload(monkeypatch) -> None:
+    """Test main restores last indexed document on reload.
+    
+    Args:
+        monkeypatch: Test fixture or parameter.
+    """
+
     state = _initialize_fake_session_state(monkeypatch)
     restored_workspace = {
         "document_id": "doc-1",
@@ -617,6 +762,12 @@ def test_main_restores_last_indexed_document_on_reload(monkeypatch) -> None:
 
 
 def test_activate_document_workspace_swaps_to_selected_chat(monkeypatch) -> None:
+    """Test activate document workspace swaps to selected chat.
+    
+    Args:
+        monkeypatch: Test fixture or parameter.
+    """
+
     state = _initialize_fake_session_state(monkeypatch)
     first_workspace = {
         "document_id": "doc-1",
@@ -713,6 +864,12 @@ def test_activate_document_workspace_swaps_to_selected_chat(monkeypatch) -> None
 
 
 def test_render_upload_panel_indexes_document_and_triggers_rerun(monkeypatch) -> None:
+    """Test render upload panel indexes document and triggers rerun.
+    
+    Args:
+        monkeypatch: Test fixture or parameter.
+    """
+
     state = _initialize_fake_session_state(monkeypatch)
     indexed_document = app_state_module.IndexedDocument(
         document_id="doc-1",
@@ -741,6 +898,12 @@ def test_render_upload_panel_indexes_document_and_triggers_rerun(monkeypatch) ->
 
 
 def test_main_recovers_workspace_from_active_session_when_library_is_empty(monkeypatch) -> None:
+    """Test main recovers workspace from active session when library is empty.
+    
+    Args:
+        monkeypatch: Test fixture or parameter.
+    """
+
     state = _initialize_fake_session_state(monkeypatch)
     state.uploaded_sources = ["anatomy_example.pdf"]
     state.chunks = [
@@ -780,6 +943,12 @@ def test_main_recovers_workspace_from_active_session_when_library_is_empty(monke
 
 
 def test_main_recovers_workspace_from_pinecone_when_local_sources_are_empty(monkeypatch) -> None:
+    """Test main recovers workspace from pinecone when local sources are empty.
+    
+    Args:
+        monkeypatch: Test fixture or parameter.
+    """
+
     state = _initialize_fake_session_state(monkeypatch)
     remote_workspace = {
         "document_id": "doc-remote",

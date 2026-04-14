@@ -1,8 +1,13 @@
+"""test_retrieval.py: Tests for test_retrieval.py."""
+
 from src.models import Chunk
 from src.retrieval import retrieve_chunks
 
 
 def test_retrieve_chunks_returns_best_match_for_session() -> None:
+    """Test retrieve chunks returns best match for session.
+    """
+
     chunks = [
         Chunk(
             id="a",

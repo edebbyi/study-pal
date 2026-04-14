@@ -28,4 +28,4 @@ openlit
 pytest
 
 # Code quality
-pylint
+ruff

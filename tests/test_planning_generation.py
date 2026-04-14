@@ -1,8 +1,13 @@
+"""test_planning_generation.py: Tests for test_planning_generation.py."""
+
 from src.models import StudyPlan
 from src.planning import _fallback_study_plan, is_valid_study_plan
 
 
 def test_fallback_study_plan_prioritizes_weak_concepts() -> None:
+    """Test fallback study plan prioritizes weak concepts.
+    """
+
     study_plan = _fallback_study_plan(
         "Photosynthesis",
         ["light reactions", "glucose production"],
@@ -15,6 +20,9 @@ def test_fallback_study_plan_prioritizes_weak_concepts() -> None:
 
 
 def test_fallback_study_plan_handles_no_weak_concepts() -> None:
+    """Test fallback study plan handles no weak concepts.
+    """
+
     study_plan = _fallback_study_plan(
         "Photosynthesis",
         [],
@@ -26,6 +34,9 @@ def test_fallback_study_plan_handles_no_weak_concepts() -> None:
 
 
 def test_study_plan_validator_rejects_empty_sections_and_topic_mismatch() -> None:
+    """Test study plan validator rejects empty sections and topic mismatch.
+    """
+
     invalid_plan = StudyPlan(
         topic="Cell Respiration",
         reviewed_topics=[" "],

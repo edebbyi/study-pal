@@ -1,8 +1,13 @@
+"""test_agent.py: Tests for test_agent.py."""
+
 from src.agent import advance_mastery_loop, stop_mastery_loop
 from src.models import QuizFeedback, QuizResult
 
 
 def test_advance_mastery_loop_builds_plan_on_completion() -> None:
+    """Test advance mastery loop builds plan on completion.
+    """
+
     quiz_result = QuizResult(
         score=2,
         total=2,
@@ -26,6 +31,9 @@ def test_advance_mastery_loop_builds_plan_on_completion() -> None:
 
 
 def test_stop_mastery_loop_builds_stopped_plan() -> None:
+    """Test stop mastery loop builds stopped plan.
+    """
+
     progress = stop_mastery_loop("Photosynthesis", ["light reactions"])
 
     assert progress.status == "stopped"

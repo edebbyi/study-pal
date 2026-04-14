@@ -1,8 +1,13 @@
+"""test_citations.py: Tests for test_citations.py."""
+
 from src.citations import collect_citations, format_citations
 from src.models import RetrievedChunk
 
 
 def test_collect_citations_dedupes_in_order() -> None:
+    """Test collect citations dedupes in order.
+    """
+
     chunks = [
         RetrievedChunk(text="a", filename="one.pdf", page=1, citation="one.pdf, page 1", score=0.9, chunk_id=1),
         RetrievedChunk(text="b", filename="one.pdf", page=1, citation="one.pdf, page 1", score=0.8, chunk_id=2),
@@ -13,6 +18,9 @@ def test_collect_citations_dedupes_in_order() -> None:
 
 
 def test_format_citations_returns_bulleted_block() -> None:
+    """Test format citations returns bulleted block.
+    """
+
     formatted = format_citations(["one.pdf, page 1"])
     assert "Sources:" in formatted
     assert "- one.pdf, page 1" in formatted

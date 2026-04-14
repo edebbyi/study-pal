@@ -1,3 +1,5 @@
+"""test_feedback_store.py: Tests for test_feedback_store.py."""
+
 from __future__ import annotations
 
 import json
@@ -8,6 +10,13 @@ from src.models import ResponseFeedback
 
 
 def test_save_response_feedback_persists_sqlite_and_jsonl(tmp_path, monkeypatch) -> None:
+    """Test save response feedback persists sqlite and jsonl.
+    
+    Args:
+        tmp_path: Test fixture or parameter.
+        monkeypatch: Test fixture or parameter.
+    """
+
     db_path = tmp_path / "feedback.sqlite3"
     jsonl_path = tmp_path / "response_feedback.jsonl"
 
@@ -50,6 +59,12 @@ def test_save_response_feedback_persists_sqlite_and_jsonl(tmp_path, monkeypatch)
 
 
 def test_save_response_feedback_prefers_postgres_when_configured(monkeypatch) -> None:
+    """Test save response feedback prefers postgres when configured.
+    
+    Args:
+        monkeypatch: Test fixture or parameter.
+    """
+
     feedback = ResponseFeedback(
         message_id="msg-2",
         session_id="session-2",
@@ -84,6 +99,13 @@ def test_save_response_feedback_prefers_postgres_when_configured(monkeypatch) ->
 
 
 def test_load_recent_feedback_reads_sqlite_records(tmp_path, monkeypatch) -> None:
+    """Test load recent feedback reads sqlite records.
+    
+    Args:
+        tmp_path: Test fixture or parameter.
+        monkeypatch: Test fixture or parameter.
+    """
+
     db_path = tmp_path / "feedback.sqlite3"
     jsonl_path = tmp_path / "response_feedback.jsonl"
 

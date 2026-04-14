@@ -1,9 +1,14 @@
+"""test_grading.py: Tests for test_grading.py."""
+
 from src.mastery import advance_mastery_progress
 from src.grading import grade_quiz
 from src.models import QuizQuestion, StudyQuiz
 
 
 def test_grade_quiz_scores_and_collects_weak_concepts() -> None:
+    """Test grade quiz scores and collects weak concepts.
+    """
+
     quiz = StudyQuiz(
         title="Checkpoint Quiz: Photosynthesis",
         topic="Photosynthesis",
@@ -32,6 +37,9 @@ def test_grade_quiz_scores_and_collects_weak_concepts() -> None:
 
 
 def test_advance_mastery_progress_builds_reinforcement_round() -> None:
+    """Test advance mastery progress builds reinforcement round.
+    """
+
     quiz = StudyQuiz(
         title="Checkpoint Quiz: Photosynthesis",
         topic="Photosynthesis",
@@ -62,6 +70,9 @@ def test_advance_mastery_progress_builds_reinforcement_round() -> None:
 
 
 def test_advance_mastery_progress_marks_completion_on_perfect_score() -> None:
+    """Test advance mastery progress marks completion on perfect score.
+    """
+
     quiz = StudyQuiz(
         title="Checkpoint Quiz: Photosynthesis",
         topic="Photosynthesis",

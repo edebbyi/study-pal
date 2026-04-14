@@ -1,13 +1,21 @@
+"""test_chunking.py: Tests for test_chunking.py."""
+
 from src.chunking import chunk_document, split_text
 from src.models import Document, Page
 
 
 def test_split_text_respects_overlap() -> None:
+    """Test split text respects overlap.
+    """
+
     chunks = split_text("abcdefghij", chunk_size=4, overlap=1)
     assert chunks == ["abcd", "defg", "ghij"]
 
 
 def test_chunk_document_adds_citations() -> None:
+    """Test chunk document adds citations.
+    """
+
     document = Document(
         filename="notes.txt",
         session_id="abc123",
