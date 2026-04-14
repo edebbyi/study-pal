@@ -23,6 +23,7 @@ tiktoken
 # Observability
 langfuse
 openlit
+setuptools
 
 # Testing
 pytest

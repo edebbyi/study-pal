@@ -70,7 +70,7 @@ Mastery Mode
 make install
 ```
 
-3. Add secrets in `.streamlit/secrets.toml`:
+3. Add only the secrets you need in `.streamlit/secrets.toml` (defaults cover the rest):
 
 ```toml
 OPENROUTER_API_KEY = "..."
