@@ -1,8 +1,8 @@
 """test_grading.py: Tests for test_grading.py."""
 
-from src.mastery import advance_mastery_progress
-from src.grading import grade_quiz
-from src.models import QuizQuestion, StudyQuiz
+from src.modes.mastery import advance_mastery_progress
+from src.modes.grading import grade_quiz
+from src.core.models import QuizQuestion, StudyQuiz
 
 
 def test_grade_quiz_scores_and_collects_weak_concepts() -> None:

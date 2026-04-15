@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from typing import cast
 
 from pinecone import Pinecone, PineconeApiException, PineconeConfigurationError, PineconeProtocolError
 
 from src.core.config import settings
-from src.core.models import Chunk, RetrievedChunk
+from src.core.models import Chunk, RetrievedChunk, SourceType
 from src.data.embeddings import EmbeddingVector
 
 
@@ -110,6 +111,7 @@ def upsert_remote_chunks(chunks: list[Chunk], vectors: list[EmbeddingVector]) ->
                     "page": chunk.page,
                     "chunk_id": chunk.chunk_id,
                     "session_id": chunk.session_id,
+                    "user_id": chunk.user_id,
                     "citation": chunk.citation,
                     "source_type": chunk.source_type,
                     "document_id": chunk.document_id,
@@ -133,6 +135,7 @@ def query_remote_chunks(
     top_k: int,
     *,
     document_id: str | None = None,
+    user_id: str | None = None,
 ) -> list[RetrievedChunk]:
     """Query Pinecone and normalize results for a session or document.
 
@@ -163,11 +166,15 @@ def query_remote_chunks(
 
     if document_id:
         filter_payload: dict[str, object] = {"document_id": {"$eq": document_id}}
+        if user_id:
+            filter_payload = {"$and": [filter_payload, {"user_id": {"$eq": user_id}}]}
         if session_id:
             filter_payload = {"$and": [filter_payload, {"session_id": {"$eq": session_id}}]}
         return _run_query(filter_payload)
 
     if session_id:
+        if user_id:
+            return _run_query({"$and": [{"session_id": {"$eq": session_id}}, {"user_id": {"$eq": user_id}}]})
         return _run_query({"session_id": {"$eq": session_id}})
     return []
 
@@ -209,6 +216,8 @@ def _chunk_from_metadata(vector_id: str, metadata: dict) -> Chunk:
     Returns:
         Chunk: Parsed chunk instance.
     """
+    source_type_raw = metadata.get("source_type", "pdf")
+    source_type: SourceType = cast(SourceType, source_type_raw if source_type_raw in {"pdf", "txt", "md"} else "pdf")
     return Chunk(
         id=vector_id,
         text=str(metadata.get("text", "")),
@@ -217,16 +226,21 @@ def _chunk_from_metadata(vector_id: str, metadata: dict) -> Chunk:
         chunk_id=int(metadata.get("chunk_id", 0)),
         session_id=str(metadata.get("session_id", "")),
         citation=str(metadata.get("citation", "")),
-        source_type=str(metadata.get("source_type", "pdf")),
+        source_type=source_type,
         document_id=str(metadata.get("document_id")) if metadata.get("document_id") else None,
         document_title=str(metadata.get("document_title")) if metadata.get("document_title") else None,
         document_summary=str(metadata.get("document_summary")) if metadata.get("document_summary") else None,
         topic=str(metadata.get("topic")) if metadata.get("topic") else None,
         chapter=str(metadata.get("chapter")) if metadata.get("chapter") else None,
+        user_id=str(metadata.get("user_id")) if metadata.get("user_id") else None,
     )
 
 
-def rebuild_document_library_from_remote(max_vectors: int = 1000) -> list[dict[str, object]]:
+def rebuild_document_library_from_remote(
+    *,
+    user_id: str | None = None,
+    max_vectors: int = 1000,
+) -> list[dict[str, object]]:
     """Rebuild workspace records from the remote vector store.
 
     Args:
@@ -263,12 +277,14 @@ def rebuild_document_library_from_remote(max_vectors: int = 1000) -> list[dict[s
     except (PineconeApiException, PineconeConfigurationError, PineconeProtocolError, AttributeError, ValueError):
         return []
 
-    grouped_chunks: dict[tuple[str, str], list[Chunk]] = defaultdict(list)
+    grouped_chunks: dict[tuple[str, str, str | None], list[Chunk]] = defaultdict(list)
     for chunk in remote_chunks:
-        grouped_chunks[(chunk.session_id, chunk.filename)].append(chunk)
+        if user_id and chunk.user_id != user_id:
+            continue
+        grouped_chunks[(chunk.session_id, chunk.filename, chunk.user_id)].append(chunk)
 
     workspaces: list[dict[str, object]] = []
-    for (session_id, filename), chunks in grouped_chunks.items():
+    for (session_id, filename, chunk_user_id), chunks in grouped_chunks.items():
         first_chunk = sorted(chunks, key=lambda chunk: chunk.chunk_id)[0]
         document_title = first_chunk.document_title or filename.rsplit(".", 1)[0].replace("_", " ").title()
         document_topic = first_chunk.topic or document_title
@@ -277,6 +293,7 @@ def rebuild_document_library_from_remote(max_vectors: int = 1000) -> list[dict[s
             {
                 "document_id": first_chunk.document_id or f"remote-{session_id}",
                 "session_id": session_id,
+                "user_id": chunk_user_id,
                 "filename": filename,
                 "document_title": document_title,
                 "document_topic": document_topic,
@@ -305,5 +322,5 @@ def rebuild_document_library_from_remote(max_vectors: int = 1000) -> list[dict[s
             }
         )
 
-    workspaces.sort(key=lambda workspace: workspace["filename"])
+    workspaces.sort(key=lambda workspace: str(workspace.get("filename", "")))
     return workspaces

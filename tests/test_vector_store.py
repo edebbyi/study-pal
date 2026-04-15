@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from src.vector_store import rebuild_document_library_from_remote
-import src.vector_store as vector_store
+import builtins
+
+from src.data.vector_store import rebuild_document_library_from_remote
+import src.data.vector_store as vector_store
 
 
 class FakeVector:
@@ -26,7 +28,7 @@ class FakeIndex:
 
         yield ["session-1-0", "session-1-1"]
 
-    def fetch(self, ids: list[str]):
+    def fetch(self, ids: builtins.list[str]):
         """Fetch.
         
         Args:

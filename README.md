@@ -1,76 +1,47 @@
 # Study Pal
 
-Study Pal is a Streamlit study coach that lets you upload notes, ask cited questions, and run a bounded mastery loop with quizzes, reteaching, and a final study plan.
+Study Pal is a Streamlit study app for note-grounded Q&A and guided mastery loops.
 
-## Demo
+- Ask questions against uploaded notes with citations.
+- Run a bounded mastery loop (quiz -> grade -> reteach -> reinforce -> study plan).
+- Track traces/prompts in Langfuse (optional).
+- Store feedback in Postgres when configured, with local fallback.
+
+## Walkthrough
 
 ![Study Pal demo](docs/demo.gif)
 
-## What It Does
+### Ask Mode
+![Study Pal Ask Mode](docs/studypal-ask-mode.gif)
 
-- Upload `pdf`, `txt`, or `md` notes
-- Chunk and embed note content
-- Retrieve relevant note passages for Ask Mode answers
-- Show source citations for Ask Mode and Mastery Mode outputs
-- Run a bounded mastery loop:
-  - introduce a topic
-  - generate a quiz
-  - grade answers
-  - reteach weak concepts
-  - generate a reinforcement quiz
-  - stop on mastery, stop action, or max rounds
-  - build a study plan
+### Mastery Mode
+![Study Pal Mastery Mode](docs/studypal-mastery-mode.gif)
 
-## Architecture
+## Quick Start (Local)
 
-- [app.py](app.py): Streamlit controller and UI
-- [src/core/config.py](src/core/config.py): typed settings loader
-- [src/notes/notes_upload.py](src/notes/notes_upload.py): upload and indexing workflow
-- [src/notes/notes_answering.py](src/notes/notes_answering.py): Ask Mode answer building and citation lookup
-- [src/modes/mode_router.py](src/modes/mode_router.py): Ask vs Mastery routing
-- [src/modes/mastery.py](src/modes/mastery.py): mastery session and progression rules
-- [src/modes/agent.py](src/modes/agent.py): bounded loop orchestration
-- [src/modes/quiz.py](src/modes/quiz.py): quiz generation and validation
-- [src/modes/grading.py](src/modes/grading.py): quiz grading
-- [src/modes/remediation.py](src/modes/remediation.py): reteaching generation and fallback
-- [src/modes/planning.py](src/modes/planning.py): study-plan generation and fallback
-- [src/llm/llm_client.py](src/llm/llm_client.py): OpenRouter-backed generation
-- [src/data/vector_store.py](src/data/vector_store.py): Pinecone operations
+### Prerequisites
 
-## Architecture Overview
+- Python 3.11
+- `pip`
+- OpenRouter API key
+- Pinecone index + host (for remote vector retrieval)
 
-At a high level, the app moves from upload to retrieval to tutoring, then optionally into the mastery loop.
-
-```
-Upload notes
-  -> Ingestion + chunking
-  -> Embeddings + Pinecone (optional)
-  -> Workspace cache
-
-Ask Mode
-  -> Retrieve relevant chunks
-  -> LLM answer from notes
-  -> Citations
-
-Mastery Mode
-  -> Topic detection
-  -> Quiz generation
-  -> Grading
-  -> Reteach weak concepts
-  -> Reinforcement quiz
-  -> Study plan
-```
-
-## Setup
-
-1. Create and activate a virtual environment.
-2. Install dependencies:
+### 1) Clone and install
 
 ```bash
+git clone <your-repo-url>
+cd StudyPal
+python3.11 -m venv .venv
+source .venv/bin/activate
 make install
 ```
 
-3. Add only the secrets you need in `.streamlit/secrets.toml` (defaults cover the rest):
+### 2) Configure settings
+
+Use either `.env` (local dev) or `.streamlit/secrets.toml` (Streamlit Cloud).  
+Environment variables override `secrets.toml` locally.
+
+Minimum keys to run core app:
 
 ```toml
 OPENROUTER_API_KEY = "..."
@@ -78,11 +49,62 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 OPENROUTER_CHAT_MODEL = "anthropic/claude-sonnet-4.5"
 OPENROUTER_EMBEDDING_MODEL = "text-embedding-3-small"
 PINECONE_API_KEY = "..."
-PINECONE_HOST = "https://studypal-3w8u9cl.svc.aped-4627-b74a.pinecone.io"
+PINECONE_HOST = "https://<your-index-host>.pinecone.io"
 PINECONE_INDEX_NAME = "studypal"
-DATABASE_URL = "postgresql://user:password@host:5432/studypal"
+```
+
+If you want magic-link login:
+
+```toml
+SUPABASE_URL = "https://your-project.supabase.co"
+SUPABASE_PUBLIC_KEY = "sb_publishable_..."
+SUPABASE_REDIRECT_URL = "http://localhost:8501"
+```
+
+Optional (recommended for production):
+
+```toml
+DATABASE_URL = "postgresql://user:password@host:5432/dbname"
 LANGFUSE_SECRET_KEY = "..."
 LANGFUSE_PUBLIC_KEY = "..."
+LANGFUSE_BASE_URL = "https://cloud.langfuse.com"
+OPENROUTER_RERANK_MODEL = "cohere/rerank-4-pro"
+OPENROUTER_RERANK_CANDIDATES = "12"
+```
+
+Reference template: `.streamlit/secrets.example.toml`
+
+Complete `secrets.toml` example:
+
+```toml
+OPENROUTER_API_KEY = ""
+OPENROUTER_CHAT_MODEL = "anthropic/claude-sonnet-4.5"
+OPENROUTER_EMBEDDING_MODEL = "text-embedding-3-small"
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+OPENROUTER_RERANK_MODEL = "cohere/rerank-4-pro"
+OPENROUTER_RERANK_CANDIDATES = "12"
+EMBEDDING_DIMENSIONS = "512"
+
+STUDYPAL_CHUNK_SIZE = "900"
+STUDYPAL_CHUNK_OVERLAP = "150"
+STUDYPAL_TOP_K = "4"
+STUDYPAL_QUIZ_QUESTIONS = "3"
+STUDYPAL_MAX_QUIZ_ROUNDS = "3"
+STUDYPAL_MAX_CHAT_TOKENS = "600"
+STUDYPAL_MAX_FILE_SIZE_MB = "150"
+
+SUPABASE_URL = ""
+SUPABASE_PUBLIC_KEY = ""
+SUPABASE_REDIRECT_URL = "http://localhost:8501"
+
+PINECONE_API_KEY = ""
+PINECONE_HOST = ""
+PINECONE_INDEX_NAME = "studypal"
+
+DATABASE_URL = ""
+
+LANGFUSE_SECRET_KEY = ""
+LANGFUSE_PUBLIC_KEY = ""
 LANGFUSE_BASE_URL = "https://cloud.langfuse.com"
 LANGFUSE_PROMPT_ANSWER = "study_pal_answer"
 LANGFUSE_PROMPT_STRUCTURED_ANSWER = "study_pal_structured_answer"
@@ -92,104 +114,117 @@ LANGFUSE_PROMPT_RETEACH = "study_pal_reteach"
 LANGFUSE_PROMPT_STUDY_PLAN = "study_pal_study_plan"
 LANGFUSE_PROMPT_FOLLOW_UP = "study_pal_follow_up"
 LANGFUSE_PROMPT_VERSION = ""
-OPENROUTER_RERANK_MODEL = ""
-OPENROUTER_RERANK_CANDIDATES = "12"
 ```
 
-> Note: `.streamlit/secrets.toml` is git-ignored on purpose. Use
-> `.streamlit/secrets.example.toml` as a starting point.
-
-Optional: seed Langfuse prompt templates from the repository defaults:
-
-```bash
-python scripts/seed_langfuse_prompts.py
-```
-
-5. Optional but recommended for production: apply the feedback schema from [db/schema.sql](db/schema.sql) to your Postgres database before starting the app.
-
-4. Run the app:
+### 3) Run
 
 ```bash
 make run
 ```
 
-## Docker
+App starts at `http://localhost:8501`.
 
-Build and run with Docker:
-
-```bash
-docker build -t studypal .
-docker run -p 8501:8501 --env-file .env studypal
-```
-
-Or use Docker Compose:
+## Quick Start (Docker)
 
 ```bash
 docker compose up --build
 ```
 
-Copy `.env.example` to `.env` and fill in values, or mount
-`.streamlit/secrets.toml` into the container if you prefer that format.
+or with Make targets:
 
-## Streamlit Cloud
+```bash
+make dev
+```
 
-Deploy on Streamlit Cloud:
+Useful dev commands:
 
-1. Push this repo to GitHub.
-2. Create a new app in Streamlit Cloud and point it at `app.py`.
-3. In **App settings → Secrets**, paste the same keys you would put in `.streamlit/secrets.toml`.
-4. Deploy to get a public URL like `https://studypal-<random>.streamlit.app`.
+```bash
+make dev-up      # recreate/start existing image/container
+make dev-down    # stop and remove containers/network
+```
+
+## Configuration Notes
+
+- `PINECONE_INDEX_NAME` must match your real index name exactly.
+- `SUPABASE_REDIRECT_URL` must match the URL users click back into:
+  - local: `http://localhost:8501`
+  - cloud: `https://<your-app>.streamlit.app`
+- Keep secrets out of git (`.env`, `.streamlit/secrets.toml` are ignored).
+
+## Database Setup (Feedback)
+
+If you set `DATABASE_URL`, apply schema before running:
+
+```bash
+psql "$DATABASE_URL" -f db/schema.sql
+```
+
+If DB is not configured, app falls back to local SQLite/JSONL storage.
+
+## Langfuse Prompt Seeding (Optional)
+
+```bash
+python scripts/seed_langfuse_prompts.py
+```
+
+Force-update prompt versions:
+
+```bash
+python scripts/seed_langfuse_prompts.py --force --label production
+```
+
+## Streamlit Cloud Deployment
+
+1. Push repo to GitHub.
+2. Create Streamlit app pointing to `app.py`.
+3. Paste your config into Streamlit **Secrets**.
+4. Set Supabase auth URLs:
+   - Site URL: current app URL
+   - Redirect URLs: local + production URL
+5. Deploy.
+
+Magic-link template should resolve back to your app URL with token params, for example:
+
+```html
+<a href="http://localhost:8501/?token_hash={{ .TokenHash }}&type=magiclink&email={{ .Email }}">
+  Log In
+</a>
+```
+
+Use your Streamlit Cloud URL instead of localhost in production.
 
 ## Development
 
-Run tests:
-
 ```bash
 make test
-```
-
-Run linting:
-
-```bash
 make lint
 ```
 
-## CI
+CI runs Ruff, Mypy, and Pytest on pushes and pull requests.
 
-GitHub Actions runs on every push and pull request and executes:
+## Project Structure
 
-- Ruff (`ruff check .`)
-- Mypy (`mypy .`)
-- Pytest (`pytest`)
-
-The project uses the repository-root `ruff.toml` for lint configuration.
-
-## Demo Flow
-
-1. Upload one of the sample files from [data_samples/](data_samples).
-2. Ask a normal question about the notes to use Ask Mode.
-3. Enter a mastery-style prompt such as `Help me study photosynthesis`.
-4. Complete the quiz and review the reteaching feedback.
-5. Continue until the app generates a study plan, or use `Stop and build study plan`.
+- `app.py`: Streamlit UI + controller
+- `src/notes/`: upload/index + answer orchestration
+- `src/data/`: ingestion, chunking, retrieval, vector/cache
+- `src/llm/`: prompts + model client
+- `src/modes/`: ask/mastery router + quiz/grading/remediation/planning
+- `src/feedback/`: feedback persistence
+- `src/auth/`: Supabase magic-link helpers
+- `db/schema.sql`: Postgres schema
 
 ## Limitations
 
-- Responses are limited to the uploaded notes; the app does not browse the web.
-- Retrieval quality depends on chunking and the notes' clarity.
-- The mastery loop is intentionally bounded to avoid endless cycles.
-- No user authentication or multi-user storage is included in this version.
-- Citations are chunk-level and may not match exact sentence boundaries.
+- Answers are limited to uploaded notes.
+- Retrieval quality depends on note quality/chunking.
+- Mastery loop is intentionally bounded.
+- Citations are chunk-level (not exact sentence spans).
 
-## Current Notes
+## Next Version Focus
 
-- The mastery loop is bounded in code, not autonomous in an open-ended sense.
-- Generated quiz, remediation, and study-plan content is validated before use and falls back safely when needed.
-- Integration-style app flow tests cover Ask Mode, Mastery start, progression, completion, and stop behavior.
-- Response feedback is stored in Postgres when `DATABASE_URL` is configured, with local SQLite/JSONL fallback for development.
-- The sidebar includes a small `Feedback Admin` page for browsing recent saved feedback records.
+- Richer reteach interface and interaction flow in Mastery Mode.
+- Higher-quality reteach content with clearer misconception contrast.
 
-## Secrets
+## License
 
-Sensitive values should live in `.streamlit/secrets.toml` or environment
-variables. The secrets file is ignored by git by default to keep keys out of
-version control.
+MIT

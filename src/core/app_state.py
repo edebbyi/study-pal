@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+from typing import cast
 
 import streamlit as st
 
@@ -45,11 +46,57 @@ def _empty_workspace_state() -> dict[str, object]:
     }
 
 
+def _as_str_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if isinstance(item, str)]
+
+
+def _as_chunk_list(value: object) -> list[Chunk]:
+    if not isinstance(value, list):
+        return []
+    chunks: list[Chunk] = []
+    for item in value:
+        if isinstance(item, Chunk):
+            chunks.append(item)
+        elif isinstance(item, dict):
+            try:
+                chunks.append(Chunk.model_validate(item))
+            except Exception:
+                continue
+    return chunks
+
+
+def _as_message_list(value: object) -> list[dict[str, object]]:
+    if not isinstance(value, list):
+        return []
+    messages: list[dict[str, object]] = []
+    for item in value:
+        if isinstance(item, dict):
+            messages.append(cast(dict[str, object], item))
+    return messages
+
+
+def _as_feedback_map(value: object) -> dict[str, dict[str, object]]:
+    if not isinstance(value, dict):
+        return {}
+    feedback: dict[str, dict[str, object]] = {}
+    for key, item in value.items():
+        if isinstance(key, str) and isinstance(item, dict):
+            feedback[key] = cast(dict[str, object], item)
+    return feedback
+
+
 @dataclass
 class SessionStateDefaults:
     """Provide defaults for Streamlit session state keys."""
 
     session_id: str = field(default_factory=generate_session_id)
+    user_email: str | None = None
+    user_id: str | None = None
+    auth_email: str = ""
+    auth_code_sent: bool = False
+    auth_error: str | None = None
     messages: list[dict[str, object]] = field(default_factory=list)
     message_feedback: dict[str, dict[str, object]] = field(default_factory=dict)
     uploaded_sources: list[str] = field(default_factory=list)
@@ -94,6 +141,7 @@ class IndexedDocument:
     key_hooks: list[str]
     chunks: list[Chunk]
     size_mb: float
+    user_id: str | None = None
     last_conversation_topic: str | None = None
     last_opened_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
@@ -114,9 +162,10 @@ def _build_workspace(indexed_document: IndexedDocument) -> dict[str, object]:
     Returns:
         dict[str, object]: Workspace payload for the library.
     """
-    workspace = {
+    workspace: dict[str, object] = {
         "document_id": indexed_document.document_id,
         "session_id": indexed_document.session_id,
+        "user_id": indexed_document.user_id,
         "filename": indexed_document.filename,
         "document_title": indexed_document.document_title,
         "document_topic": indexed_document.document_topic,
@@ -142,9 +191,10 @@ def build_workspace_from_session() -> dict[str, object] | None:
         return None
 
     filename = st.session_state.uploaded_sources[0]
-    workspace = {
+    workspace: dict[str, object] = {
         "document_id": f"session-{st.session_state.session_id}",
         "session_id": st.session_state.session_id,
+        "user_id": st.session_state.user_id,
         "filename": filename,
         "document_title": filename.rsplit(".", 1)[0].replace("_", " ").title(),
         "document_topic": filename.rsplit(".", 1)[0].replace("_", " ").title(),
@@ -212,28 +262,35 @@ def _load_workspace_state(workspace: dict[str, object]) -> None:
     Args:
         workspace (dict[str, object]): Workspace payload to load.
     """
-    st.session_state.session_id = workspace["session_id"]
-    st.session_state.uploaded_sources = [workspace["filename"]]
-    st.session_state.chunks = workspace["chunks"]
-    st.session_state.messages = list(workspace["messages"])
-    st.session_state.message_feedback = dict(workspace.get("message_feedback", {}))
-    st.session_state.current_mode = workspace["current_mode"]
-    st.session_state.conversation_topic = workspace["conversation_topic"]
+    st.session_state.session_id = str(workspace.get("session_id", st.session_state.session_id))
+    st.session_state.uploaded_sources = [str(workspace.get("filename", ""))]
+    st.session_state.chunks = _as_chunk_list(workspace.get("chunks"))
+    st.session_state.messages = _as_message_list(workspace.get("messages"))
+    st.session_state.message_feedback = _as_feedback_map(workspace.get("message_feedback"))
+
+    current_mode_value = workspace.get("current_mode")
+    st.session_state.current_mode = current_mode_value if current_mode_value in {"ask", "mastery"} else "ask"
+    st.session_state.conversation_topic = cast(str | None, workspace.get("conversation_topic"))
     st.session_state.quiz_goal = workspace.get("quiz_goal")
-    st.session_state.study_topic = workspace["study_topic"]
-    st.session_state.mastery_intro = workspace["mastery_intro"]
-    st.session_state.mastery_intro_citations = list(workspace["mastery_intro_citations"])
-    st.session_state.remediation_message = workspace["remediation_message"]
-    st.session_state.remediation_citations = list(workspace["remediation_citations"])
+    st.session_state.study_topic = cast(str | None, workspace.get("study_topic"))
+    st.session_state.mastery_intro = cast(str | None, workspace.get("mastery_intro"))
+    st.session_state.mastery_intro_citations = _as_str_list(workspace.get("mastery_intro_citations"))
+    st.session_state.remediation_message = cast(str | None, workspace.get("remediation_message"))
+    st.session_state.remediation_citations = _as_str_list(workspace.get("remediation_citations"))
     st.session_state.remediation_payload = workspace.get("remediation_payload")
-    st.session_state.mastery_status = workspace["mastery_status"]
+    mastery_status_value = workspace.get("mastery_status")
+    st.session_state.mastery_status = (
+        mastery_status_value
+        if mastery_status_value in {"idle", "in_progress", "completed", "stopped"}
+        else "idle"
+    )
     st.session_state.current_quiz = workspace["current_quiz"]
     st.session_state.quiz_round = workspace["quiz_round"]
     st.session_state.last_quiz_result = workspace["last_quiz_result"]
-    st.session_state.weak_concepts = list(workspace["weak_concepts"])
+    st.session_state.weak_concepts = _as_str_list(workspace.get("weak_concepts"))
     st.session_state.study_plan = workspace["study_plan"]
-    st.session_state.study_plan_citations = list(workspace["study_plan_citations"])
-    st.session_state.quiz_history = list(workspace.get("quiz_history", []))
+    st.session_state.study_plan_citations = _as_str_list(workspace.get("study_plan_citations"))
+    st.session_state.quiz_history = _as_message_list(workspace.get("quiz_history"))
     st.session_state.quiz_view_round = workspace.get("quiz_view_round")
     st.session_state.last_info_lane_label = workspace.get("last_info_lane_label")
     st.session_state.info_lane_variant_index = workspace.get("info_lane_variant_index", 0)

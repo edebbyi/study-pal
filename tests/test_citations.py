@@ -1,7 +1,7 @@
 """test_citations.py: Tests for test_citations.py."""
 
-from src.citations import collect_citations, format_citations
-from src.models import RetrievedChunk
+from src.data.citations import collect_citations, format_citations
+from src.core.models import RetrievedChunk
 
 
 def test_collect_citations_dedupes_in_order() -> None:
@@ -24,3 +24,23 @@ def test_format_citations_returns_bulleted_block() -> None:
     formatted = format_citations(["one.pdf, page 1"])
     assert "Sources:" in formatted
     assert "- one.pdf, page 1" in formatted
+
+
+def test_collect_citations_collapses_toc_heavy_chapter_labels() -> None:
+    """Ensure noisy table-of-contents chapter labels are shortened for display."""
+    noisy = (
+        "anatomy_example.pdf, Chapter 1 Brain Basics 10 Chapter 2 Senses & Perception 18 "
+        "Chapter 3 Movement 26 Contents, page 38"
+    )
+    chunks = [
+        RetrievedChunk(
+            text="a",
+            filename="anatomy_example.pdf",
+            page=38,
+            citation=noisy,
+            score=0.9,
+            chunk_id=1,
+        )
+    ]
+
+    assert collect_citations(chunks) == ["anatomy_example.pdf, page 38"]

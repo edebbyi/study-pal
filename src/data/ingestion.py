@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, cast
 
 from pypdf import PdfReader
 
 from src.core.config import settings
-from src.core.models import Document, Page
+from src.core.models import Document, Page, SourceType
 from src.core.utils import clean_text
 
 
@@ -102,7 +102,7 @@ def build_document(uploaded_file: BinaryIO, session_id: str) -> Document:
         Document: Result value.
     """
 
-    source_type = validate_uploaded_file(uploaded_file)
+    source_type = cast(SourceType, validate_uploaded_file(uploaded_file))
     if source_type == "pdf":
         pages = extract_pdf(uploaded_file)
     else:

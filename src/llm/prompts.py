@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any, cast
 
 from langfuse import get_client
 
@@ -35,12 +36,16 @@ def _render_langfuse_prompt(name: str, variables: dict[str, object]) -> PromptBu
         return None
 
     try:
-        langfuse = get_client()
+        langfuse = cast(Any, get_client())
         prompt = None
         if hasattr(langfuse, "get_prompt"):
             try:
-                if settings.langfuse_prompt_version:
-                    prompt = langfuse.get_prompt(name, version=settings.langfuse_prompt_version)
+                prompt_version = settings.langfuse_prompt_version.strip()
+                if prompt_version:
+                    if prompt_version.isdigit():
+                        prompt = langfuse.get_prompt(name, version=int(prompt_version))
+                    else:
+                        prompt = langfuse.get_prompt(name, label=prompt_version)
                 else:
                     prompt = langfuse.get_prompt(name)
             except TypeError:
@@ -150,43 +155,39 @@ def build_structured_answer_prompt(
     example_block = f"{example}\n\n" if example.strip() else ""  # optional few-shot example
     history_block = f"Previous conversation:\n{chat_history}\n\n" if chat_history.strip() else ""  # only include when available
     fallback = (
-        "You are Study Pal, a grounded tutor.\n"
-        "Your goal is to answer the user's question AND provide \"Bridges\" to keep them learning.\n\n"
-        "RULES:\n"
-        "1. Use ONLY the provided notes context.\n"
-        "2. Always infer the best possible answer from the context when any relevant information exists.\n"
-        "3. Only say \"I couldn't find that in the notes yet.\" when NO context is retrieved.\n"
-        "4. Always provide a bridge button based on something that IS in the notes.\n"
-        "5. Keep the answer to a MAXIMUM of 4 sentences.\n"
-        f"6. Use the persona: {persona_name}.\n"
-        "7. Return ONLY valid JSON. No extra commentary.\n\n"
-        "Button Label Rule (Info Lane):\n"
-        "- Do NOT use \"Explore [Topic]\" or \"Learn about [Topic]\".\n"
-        "- Use one of these hook styles:\n"
-        "  - The Mystery: \"The secret role of the [Topic]...\"\n"
-        "  - The Connection: \"How [Topic] actually changes your [Result]...\"\n"
-        "  - The Question: \"Why is the [Topic] so critical for [Function]?\"\n"
-        "- Must start with exactly ONE relevant emoji (e.g., 🧠, ⚡, 🧩).\n\n"
-        "Action Metadata Rule:\n"
-        "- Identify a noun + verb pair in the notes and shape the hook around it.\n\n"
-        "Return valid JSON with this shape:\n"
+        f"SYSTEM: You are {persona_name}, a grounded tutor.\n"
+        "Provide answers ONLY from the provided context.\n"
+        "Always infer the best possible answer when any relevant context exists.\n"
+        "If no relevant context exists, answer exactly: \"I couldn't find that in the notes yet.\"\n"
+        "Answer length: maximum 4 sentences.\n"
+        "FORMAT: Return raw JSON ONLY. No markdown and no extra text.\n\n"
+        "JSON SCHEMA (all keys required):\n"
         "{\n"
-        "  \"answer\": \"Concise, student-friendly explanation.\",\n"
-        "  \"citations\": [\"Doc A, p.2\", \"Doc B, p.5\"],\n"
-        "  \"topic_subject\": \"Short subject label for this quiz goal (e.g., Dendrites)\",\n"
+        "  \"answer\": \"Concise tutor response grounded in context.\",\n"
+        "  \"citations\": [\"Doc, p.#\"],\n"
+        "  \"topic_subject\": \"Short subject label\",\n"
         "  \"info_lane\": {\n"
-        "    \"button_label\": \"🧠 Hook-style label here\",\n"
-        "    \"query\": \"Specific follow-up query this button triggers.\"\n"
+        "    \"button_label\": \"🧠 Hook label\",\n"
+        "    \"query\": \"Specific follow-up query\"\n"
         "  },\n"
         "  \"quiz_lane\": {\n"
-        "    \"button_label\": \"Test your knowledge on this\",\n"
+        "    \"button_label\": \"Test your knowledge\",\n"
         "    \"intent\": \"START_QUIZ_LOOP\"\n"
         "  }\n"
         "}\n\n"
+        "BUTTON RULES:\n"
+        "1. info_lane.button_label MUST start with exactly one relevant emoji.\n"
+        "2. Use a hook style for info_lane.button_label:\n"
+        "   - The mystery of X...\n"
+        "   - How X changes Y...\n"
+        "   - Why X is critical for Y...\n"
+        "3. Use a noun+verb pair from context to craft the hook.\n"
+        "4. Do not use generic labels like \"Explore\" or \"Learn more\".\n"
+        "5. Always return both lanes.\n\n"
         f"{example_block}"
         f"{history_block}"
-        f"Context:\n{context}\n\n"
-        f"Question:\n{question}"
+        f"CONTEXT:\n{context}\n\n"
+        f"QUESTION:\n{question}"
     )
     return _resolve_prompt(
         prompt_name=settings.langfuse_prompt_structured_answer,

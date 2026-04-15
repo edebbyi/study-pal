@@ -64,6 +64,9 @@ class Settings:
     pinecone_api_key: str
     pinecone_host: str
     pinecone_index_name: str
+    supabase_url: str
+    supabase_public_key: str
+    supabase_redirect_url: str
     langfuse_secret_key: str
     langfuse_public_key: str
     langfuse_base_url: str
@@ -106,6 +109,9 @@ class Settings:
             pinecone_api_key=_read_setting("PINECONE_API_KEY", "", secrets),
             pinecone_host=_read_setting("PINECONE_HOST", "", secrets),
             pinecone_index_name=_read_setting("PINECONE_INDEX_NAME", "study-pal", secrets),
+            supabase_url=_read_setting("SUPABASE_URL", "", secrets),
+            supabase_public_key=_read_setting("SUPABASE_PUBLIC_KEY", "", secrets),
+            supabase_redirect_url=_read_setting("SUPABASE_REDIRECT_URL", "", secrets),
             langfuse_secret_key=_read_setting("LANGFUSE_SECRET_KEY", "", secrets),
             langfuse_public_key=_read_setting("LANGFUSE_PUBLIC_KEY", "", secrets),
             langfuse_base_url=_read_setting("LANGFUSE_BASE_URL", "https://cloud.langfuse.com", secrets),

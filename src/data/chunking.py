@@ -60,6 +60,7 @@ def chunk_document(
     document_title: str | None = None,
     document_summary: str | None = None,
     document_topic: str | None = None,
+    user_id: str | None = None,
 
     chapters_by_page: dict[int, str] | None = None,
 ) -> list[Chunk]:
@@ -71,6 +72,7 @@ def chunk_document(
         document_title (str | None): Input parameter.
         document_summary (str | None): Input parameter.
         document_topic (str | None): Input parameter.
+        user_id (str | None): Input parameter.
         chapters_by_page (dict[int, str] | None): Input parameter.
     
     Returns:
@@ -103,6 +105,7 @@ def chunk_document(
                     document_summary=document_summary,
                     topic=document_topic,
                     chapter=chapter,
+                    user_id=user_id,
                 )
             )
             global_chunk_counter += 1

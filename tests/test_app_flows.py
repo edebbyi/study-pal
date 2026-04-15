@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import app
-import src.agent as agent_module
-import src.app_state as app_state_module
-from src.models import (
+import src.modes.agent as agent_module
+import src.core.app_state as app_state_module
+from src.core.models import (
     Chunk,
     MasteryProgress,
     MasterySession,
@@ -13,7 +13,7 @@ from src.models import (
     QuizResult,
     StudyPlan,
     StudyQuiz,
-    TeachingResponse,
+    StructuredAnswer,
 )
 
 
@@ -56,6 +56,9 @@ def _initialize_fake_session_state(monkeypatch) -> SessionState:
     monkeypatch.setattr(app_state_module.st, "session_state", state, raising=False)
     monkeypatch.setattr(app_state_module.st, "success", lambda *args, **kwargs: None)
     app_state_module.initialize_session_state()
+    # Keep auth gate open during flow tests.
+    state.user_id = "test-user"
+    state.user_email = "test@example.com"
     return state
 
 
@@ -75,8 +78,8 @@ def test_handle_question_routes_ask_query_and_clears_mastery_state(monkeypatch) 
 
     monkeypatch.setattr(
         app,
-        "build_answer_response",
-        lambda question: TeachingResponse(
+        "build_structured_answer_response",
+        lambda question: StructuredAnswer(
             answer=f"Answer: {question}",
             citations=["notes.pdf p.1"],
         ),
@@ -164,6 +167,7 @@ def test_handle_question_reuses_previous_topic_for_referential_mastery_prompt(mo
     def fake_start_mastery_loop(
         question: str,
         fallback_topic: str | None = None,
+        session_id: str | None = None,
     ) -> tuple[MasterySession, MasteryProgress]:
         """Fake start mastery loop.
         
@@ -231,6 +235,7 @@ def test_handle_question_routes_generate_quiz_prompt_into_mastery(monkeypatch) -
     def fake_start_mastery_loop(
         question: str,
         fallback_topic: str | None = None,
+        session_id: str | None = None,
     ) -> tuple[MasterySession, MasteryProgress]:
         """Fake start mastery loop.
         
@@ -292,6 +297,7 @@ def test_handle_question_routes_generate_quiz_for_me_prompt_into_mastery(monkeyp
     def fake_start_mastery_loop(
         question: str,
         fallback_topic: str | None = None,
+        session_id: str | None = None,
     ) -> tuple[MasterySession, MasteryProgress]:
         """Fake start mastery loop.
         
@@ -353,6 +359,7 @@ def test_handle_question_routes_make_a_quiz_on_this_topic_prompt_into_mastery(mo
     def fake_start_mastery_loop(
         question: str,
         fallback_topic: str | None = None,
+        session_id: str | None = None,
     ) -> tuple[MasterySession, MasteryProgress]:
         """Fake start mastery loop.
         
@@ -414,6 +421,7 @@ def test_handle_question_routes_make_me_a_quiz_please_into_mastery_with_fallback
     def fake_start_mastery_loop(
         question: str,
         fallback_topic: str | None = None,
+        session_id: str | None = None,
     ) -> tuple[MasterySession, MasteryProgress]:
         """Fake start mastery loop.
         
@@ -480,6 +488,7 @@ def test_handle_question_uses_recent_message_topic_when_explicit_topic_state_is_
     def fake_start_mastery_loop(
         question: str,
         fallback_topic: str | None = None,
+        session_id: str | None = None,
     ) -> tuple[MasterySession, MasteryProgress]:
         """Fake start mastery loop.
         
@@ -664,10 +673,14 @@ def test_submit_response_feedback_persists_structured_record(monkeypatch) -> Non
         "save_response_feedback",
         lambda feedback: saved_feedback.append(feedback.model_dump()),
     )
-    monkeypatch.setattr(app, "persist_document_library", lambda document_library, active_document_id: None)
+    monkeypatch.setattr(
+        app,
+        "persist_document_library",
+        lambda document_library, active_document_id, **kwargs: None,
+    )
     monkeypatch.setattr(app.st, "success", lambda *args, **kwargs: None)
 
-    message = {
+    message: dict[str, object] = {
         "id": "assistant-msg-1",
         "role": "assistant",
         "content": "The medulla helps regulate breathing and heart rate.",
@@ -741,7 +754,11 @@ def test_main_restores_last_indexed_document_on_reload(monkeypatch) -> None:
         "study_plan_citations": [],
     }
 
-    monkeypatch.setattr(app, "restore_document_library", lambda: ([restored_workspace], "doc-1"))
+    monkeypatch.setattr(
+        app,
+        "restore_document_library",
+        lambda **kwargs: ([restored_workspace], "doc-1"),
+    )
     monkeypatch.setattr(app, "initialize_observability", lambda: False)
     monkeypatch.setattr(app, "render_hero", lambda: None)
     monkeypatch.setattr(app, "render_mode_overview", lambda: None)
@@ -878,6 +895,7 @@ def test_render_upload_panel_indexes_document_and_triggers_rerun(monkeypatch) ->
         document_title="Anatomy Example",
         document_topic="Human Anatomy",
         document_summary="A survey of human anatomy.",
+        key_hooks=[],
         chunks=[],
         size_mb=69.6,
     )
@@ -886,7 +904,11 @@ def test_render_upload_panel_indexes_document_and_triggers_rerun(monkeypatch) ->
 
     monkeypatch.setattr(app.st, "file_uploader", lambda *args, **kwargs: object(), raising=False)
     monkeypatch.setattr(app, "index_uploaded_file", lambda uploaded_file: indexed_document)
-    monkeypatch.setattr(app, "persist_document_library", lambda document_library, active_document_id: None)
+    monkeypatch.setattr(
+        app,
+        "persist_document_library",
+        lambda document_library, active_document_id, **kwargs: None,
+    )
     monkeypatch.setattr(app.st, "rerun", lambda: rerun_called.__setitem__("value", True), raising=False)
 
     app.render_upload_panel()
@@ -922,8 +944,12 @@ def test_main_recovers_workspace_from_active_session_when_library_is_empty(monke
     ]
     state.conversation_topic = "Brain"
 
-    monkeypatch.setattr(app, "restore_document_library", lambda: ([], None))
-    monkeypatch.setattr(app, "persist_document_library", lambda document_library, active_document_id: None)
+    monkeypatch.setattr(app, "restore_document_library", lambda **kwargs: ([], None))
+    monkeypatch.setattr(
+        app,
+        "persist_document_library",
+        lambda document_library, active_document_id, **kwargs: None,
+    )
     monkeypatch.setattr(app, "initialize_observability", lambda: False)
     monkeypatch.setattr(app, "render_hero", lambda: None)
     monkeypatch.setattr(app, "render_mode_overview", lambda: None)
@@ -979,9 +1005,13 @@ def test_main_recovers_workspace_from_pinecone_when_local_sources_are_empty(monk
         "study_plan_citations": [],
     }
 
-    monkeypatch.setattr(app, "restore_document_library", lambda: ([], None))
-    monkeypatch.setattr(app, "rebuild_document_library_from_remote", lambda: [remote_workspace])
-    monkeypatch.setattr(app, "persist_document_library", lambda document_library, active_document_id: None)
+    monkeypatch.setattr(app, "restore_document_library", lambda **kwargs: ([], None))
+    monkeypatch.setattr(app, "rebuild_document_library_from_remote", lambda **kwargs: [remote_workspace])
+    monkeypatch.setattr(
+        app,
+        "persist_document_library",
+        lambda document_library, active_document_id, **kwargs: None,
+    )
     monkeypatch.setattr(app, "initialize_observability", lambda: False)
     monkeypatch.setattr(app, "render_hero", lambda: None)
     monkeypatch.setattr(app, "render_mode_overview", lambda: None)

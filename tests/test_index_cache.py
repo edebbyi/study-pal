@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import src.index_cache as index_cache
-from src.app_state import IndexedDocument
-from src.models import Chunk
+import src.data.index_cache as index_cache
+from src.core.app_state import IndexedDocument
+from src.core.models import Chunk
 
 
 def _build_indexed_document() -> IndexedDocument:
@@ -17,6 +17,7 @@ def _build_indexed_document() -> IndexedDocument:
         document_title="Anatomy Example",
         document_topic="Human Anatomy",
         document_summary="A survey of the major systems of the human body.",
+        key_hooks=[],
         size_mb=69.6,
         chunks=[
             Chunk(

@@ -1,7 +1,7 @@
 """test_agent.py: Tests for test_agent.py."""
 
-from src.agent import advance_mastery_loop, stop_mastery_loop
-from src.models import QuizFeedback, QuizResult
+from src.modes.agent import advance_mastery_loop, stop_mastery_loop
+from src.core.models import QuizFeedback, QuizResult
 
 
 def test_advance_mastery_loop_builds_plan_on_completion() -> None:
@@ -28,6 +28,7 @@ def test_advance_mastery_loop_builds_plan_on_completion() -> None:
     assert progress.status == "completed"
     assert progress.study_plan is not None
     assert progress.study_plan.topic == "Photosynthesis"
+    assert progress.study_plan.recommended_order[0] == "topic"
 
 
 def test_stop_mastery_loop_builds_stopped_plan() -> None:

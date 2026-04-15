@@ -3,6 +3,7 @@
 CREATE TABLE IF NOT EXISTS response_feedback (
     message_id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL,
+    user_id TEXT,
     document_id TEXT,
     filename TEXT,
     query TEXT NOT NULL,
@@ -27,3 +28,7 @@ CREATE INDEX IF NOT EXISTS response_feedback_rating_idx
 -- Support topic-based filtering in analytics.
 CREATE INDEX IF NOT EXISTS response_feedback_topic_idx
     ON response_feedback (topic);
+
+-- Support user-level filtering when multi-user auth is enabled.
+CREATE INDEX IF NOT EXISTS response_feedback_user_id_idx
+    ON response_feedback (user_id);

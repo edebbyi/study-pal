@@ -30,12 +30,14 @@ def index_uploaded_file(uploaded_file) -> IndexedDocument:
     uploaded_file.seek(0)
     document = build_document(uploaded_file, st.session_state.session_id)
     document_metadata = extract_document_metadata(document)
+    user_id = st.session_state.user_id
     chunks = chunk_document(
         document,
         document_id=document_id,
         document_title=document_metadata.document_title,
         document_summary=document_metadata.document_summary,
         document_topic=document_metadata.document_topic,
+        user_id=user_id,
         chapters_by_page=detect_chapters(document),
     )
     embeddings = embed_texts([chunk.text for chunk in chunks])
@@ -48,6 +50,7 @@ def index_uploaded_file(uploaded_file) -> IndexedDocument:
     return IndexedDocument(
         document_id=document_id,
         session_id=document.session_id,
+        user_id=user_id,
         filename=document.filename,
         document_title=document_metadata.document_title,
         document_topic=document_metadata.document_topic,

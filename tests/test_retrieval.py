@@ -1,7 +1,7 @@
 """test_retrieval.py: Tests for test_retrieval.py."""
 
-from src.models import Chunk
-from src.retrieval import retrieve_chunks
+from src.core.models import Chunk
+from src.data.retrieval import retrieve_chunks
 
 
 def test_retrieve_chunks_returns_best_match_for_session() -> None:
