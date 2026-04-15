@@ -5,7 +5,7 @@ from __future__ import annotations
 import streamlit as st
 
 from src.core.config import settings
-from src.core.models import QuizQuestion, StudyQuiz
+from src.core.models import Chunk, QuizQuestion, StudyQuiz
 from src.core.utils import humanize_label
 from src.data.retrieval import retrieve_chunks
 from src.llm.llm_client import generate_quiz_from_context
@@ -16,16 +16,19 @@ default_quiz_size = settings.quiz_questions_per_round
 minimum_options_per_question = 2
 
 
-def _get_session_chunks() -> list[object]:
+def _get_session_chunks() -> list[Chunk]:
     """Read the current session's chunks safely.
 
     Returns:
-        list[object]: Session chunks or an empty list.
+        list[Chunk]: Session chunks or an empty list.
     """
     try:
-        return st.session_state.chunks
+        raw_chunks = st.session_state.chunks
     except (AttributeError, KeyError):
         return []
+    if not isinstance(raw_chunks, list):
+        return []
+    return [chunk for chunk in raw_chunks if isinstance(chunk, Chunk)]
 
 
 def _get_session_id() -> str:

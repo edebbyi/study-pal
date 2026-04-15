@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 import re
-from typing import Any, Mapping
+from typing import Any, Mapping, cast
 
 from supabase import Client, create_client
 
@@ -63,7 +63,7 @@ def send_magic_link(email: str) -> tuple[bool, str | None]:
         payload: dict[str, Any] = {"email": email}
         if settings.supabase_redirect_url:
             payload["options"] = {"email_redirect_to": settings.supabase_redirect_url}
-        client.auth.sign_in_with_otp(payload)
+        cast(Any, client.auth).sign_in_with_otp(payload)
         return True, None
     except Exception as exc:  # pragma: no cover - depends on external API
         return False, str(exc)
@@ -109,16 +109,17 @@ def complete_sign_in_from_callback(
             return None, None, False
 
     try:
+        auth_client = cast(Any, client.auth)
         response: Any
         if code:
             exchange_payload: dict[str, str] = {"auth_code": code}
             if code_verifier:
                 exchange_payload["code_verifier"] = code_verifier
-            response = client.auth.exchange_code_for_session(exchange_payload)
+            response = auth_client.exchange_code_for_session(exchange_payload)
         elif token_hash:
-            response = client.auth.verify_otp({"token_hash": token_hash, "type": token_type or "magiclink"})
+            response = auth_client.verify_otp({"token_hash": token_hash, "type": token_type or "magiclink"})
         elif email and token:
-            response = client.auth.verify_otp({"email": email, "token": token, "type": token_type or "email"})
+            response = auth_client.verify_otp({"email": email, "token": token, "type": token_type or "email"})
         else:
             return None, "Auth callback is missing required token fields.", True
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 import app
 import src.core.app_state as app_state_module
 
@@ -25,7 +27,7 @@ class _DummyContext:
     def __enter__(self):
         return self
 
-    def __exit__(self, exc_type, exc, tb) -> bool:
+    def __exit__(self, exc_type, exc, tb) -> Literal[False]:
         return False
 
 

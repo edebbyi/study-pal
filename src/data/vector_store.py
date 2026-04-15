@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from typing import cast
 
 from pinecone import Pinecone, PineconeApiException, PineconeConfigurationError, PineconeProtocolError
 
 from src.core.config import settings
-from src.core.models import Chunk, RetrievedChunk
+from src.core.models import Chunk, RetrievedChunk, SourceType
 from src.data.embeddings import EmbeddingVector
 
 
@@ -215,6 +216,8 @@ def _chunk_from_metadata(vector_id: str, metadata: dict) -> Chunk:
     Returns:
         Chunk: Parsed chunk instance.
     """
+    source_type_raw = metadata.get("source_type", "pdf")
+    source_type: SourceType = cast(SourceType, source_type_raw if source_type_raw in {"pdf", "txt", "md"} else "pdf")
     return Chunk(
         id=vector_id,
         text=str(metadata.get("text", "")),
@@ -223,7 +226,7 @@ def _chunk_from_metadata(vector_id: str, metadata: dict) -> Chunk:
         chunk_id=int(metadata.get("chunk_id", 0)),
         session_id=str(metadata.get("session_id", "")),
         citation=str(metadata.get("citation", "")),
-        source_type=str(metadata.get("source_type", "pdf")),
+        source_type=source_type,
         document_id=str(metadata.get("document_id")) if metadata.get("document_id") else None,
         document_title=str(metadata.get("document_title")) if metadata.get("document_title") else None,
         document_summary=str(metadata.get("document_summary")) if metadata.get("document_summary") else None,
@@ -319,5 +322,5 @@ def rebuild_document_library_from_remote(
             }
         )
 
-    workspaces.sort(key=lambda workspace: workspace["filename"])
+    workspaces.sort(key=lambda workspace: str(workspace.get("filename", "")))
     return workspaces

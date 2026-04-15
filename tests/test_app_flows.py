@@ -680,7 +680,7 @@ def test_submit_response_feedback_persists_structured_record(monkeypatch) -> Non
     )
     monkeypatch.setattr(app.st, "success", lambda *args, **kwargs: None)
 
-    message = {
+    message: dict[str, object] = {
         "id": "assistant-msg-1",
         "role": "assistant",
         "content": "The medulla helps regulate breathing and heart rate.",

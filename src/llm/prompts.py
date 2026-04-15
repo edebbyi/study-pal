@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any, cast
 
 from langfuse import get_client
 
@@ -35,12 +36,16 @@ def _render_langfuse_prompt(name: str, variables: dict[str, object]) -> PromptBu
         return None
 
     try:
-        langfuse = get_client()
+        langfuse = cast(Any, get_client())
         prompt = None
         if hasattr(langfuse, "get_prompt"):
             try:
-                if settings.langfuse_prompt_version:
-                    prompt = langfuse.get_prompt(name, version=settings.langfuse_prompt_version)
+                prompt_version = settings.langfuse_prompt_version.strip()
+                if prompt_version:
+                    if prompt_version.isdigit():
+                        prompt = langfuse.get_prompt(name, version=int(prompt_version))
+                    else:
+                        prompt = langfuse.get_prompt(name, label=prompt_version)
                 else:
                     prompt = langfuse.get_prompt(name)
             except TypeError:

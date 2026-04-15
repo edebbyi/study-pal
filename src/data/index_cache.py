@@ -165,7 +165,7 @@ def _restore_legacy_document_library() -> tuple[list[dict[str, object]], str | N
         payload = json.loads(legacy_indexed_document_path.read_text(encoding="utf-8"))
         document_id = str(payload.get("document_id", "legacy-doc"))
         chunks = [Chunk.model_validate(chunk) for chunk in payload["chunks"]]
-        workspace = {
+        workspace: dict[str, object] = {
             "document_id": document_id,
             "session_id": str(payload["session_id"]),
             "filename": str(payload["filename"]),

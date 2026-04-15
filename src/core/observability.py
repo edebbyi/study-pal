@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from typing import Any, cast
 
 from langfuse import get_client
 
@@ -72,7 +73,7 @@ def log_langfuse_event(
         return
 
     try:
-        langfuse = get_client()
+        langfuse = cast(Any, get_client())
         payload: dict[str, object] = {"name": name}
         if session_id:
             payload["session_id"] = session_id
@@ -116,7 +117,7 @@ def log_langfuse_score(
         return
 
     try:
-        langfuse = get_client()
+        langfuse = cast(Any, get_client())
         payload: dict[str, object] = {
             "name": name,
             "value": value,
@@ -156,7 +157,7 @@ def initialize_observability() -> bool:
         if not langfuse.auth_check():
             return False
         try:
-            import openlit
+            import openlit  # type: ignore[import-untyped]
         except ModuleNotFoundError:
             return False
         openlit.init(disable_batch=True)  # Avoid batching to keep traces near-real-time.

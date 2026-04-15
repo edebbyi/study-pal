@@ -86,7 +86,11 @@ def test_save_response_feedback_prefers_postgres_when_configured(monkeypatch) ->
     jsonl_calls: list[str] = []
     langfuse_calls: list[str] = []
 
-    monkeypatch.setattr("src.feedback.feedback_store._persist_feedback_postgres", lambda saved_feedback: postgres_calls.append(saved_feedback.message_id) or True)
+    def _persist_feedback_postgres(saved_feedback: ResponseFeedback) -> bool:
+        postgres_calls.append(saved_feedback.message_id)
+        return True
+
+    monkeypatch.setattr("src.feedback.feedback_store._persist_feedback_postgres", _persist_feedback_postgres)
     monkeypatch.setattr("src.feedback.feedback_store._persist_feedback_sqlite", lambda saved_feedback: sqlite_calls.append(saved_feedback.message_id))
     monkeypatch.setattr("src.feedback.feedback_store._append_feedback_jsonl", lambda saved_feedback: jsonl_calls.append(saved_feedback.message_id))
     monkeypatch.setattr("src.feedback.feedback_store._persist_feedback_langfuse", lambda saved_feedback: langfuse_calls.append(saved_feedback.message_id))

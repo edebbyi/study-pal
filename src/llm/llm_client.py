@@ -6,6 +6,7 @@ import json
 import re
 from contextlib import nullcontext
 from dataclasses import dataclass
+from typing import Any, ContextManager, cast
 
 from langfuse import get_client
 from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI
@@ -70,7 +71,7 @@ STRUCTURED_ANSWER_RESPONSE_FORMAT_JSON_SCHEMA: dict[str, object] = {
         "schema": STRUCTURED_ANSWER_SCHEMA,
     },
 }
-JSON_OBJECT_RESPONSE_FORMAT: dict[str, str] = {"type": "json_object"}
+JSON_OBJECT_RESPONSE_FORMAT: dict[str, object] = {"type": "json_object"}
 
 
 @dataclass(frozen=True)
@@ -125,7 +126,7 @@ def _langfuse_generation(
     prompt_bundle: PromptBundle,
 
     metadata: dict[str, str],
-) -> object:
+) -> ContextManager[Any]:
     """Langfuse generation.
     
     Args:
@@ -145,17 +146,22 @@ def _langfuse_generation(
         return nullcontext()
 
     try:
-        langfuse = get_client()
+        langfuse = cast(Any, get_client())
         return langfuse.start_as_current_observation(
             name=feature,
             as_type="generation",
-        prompt=prompt_bundle.prompt,  # send prompt object so Langfuse can link template/version
-        input=prompt_bundle.text,
+            prompt=prompt_bundle.prompt,  # send prompt object so Langfuse can link template/version
+            input=prompt_bundle.text,
             metadata=build_langfuse_metadata(feature, metadata),
             model=settings.chat_model,
         )
     except Exception:
         return nullcontext()
+
+
+def _create_chat_completion(chat_client: ChatClient, **kwargs: Any) -> Any:
+    completions = cast(Any, chat_client.client.chat.completions)
+    return completions.create(**kwargs)
 
 
 
@@ -381,7 +387,8 @@ def _repair_structured_answer_payload(
         f"Malformed output:\n{raw_output}"
     )
     try:
-        response = chat_client.client.chat.completions.create(
+        response = _create_chat_completion(
+            chat_client,
             model=settings.chat_model,
             max_tokens=settings.max_chat_tokens,
             response_format=JSON_OBJECT_RESPONSE_FORMAT,
@@ -542,7 +549,8 @@ def generate_document_metadata(filename: str, document_excerpt: str) -> Document
             prompt_bundle=prompt_bundle,
             metadata={"filename": filename, "excerpt_chars": str(len(document_excerpt))},
         ) as generation:
-            response = chat_client.client.chat.completions.create(
+            response = _create_chat_completion(
+                chat_client,
                 model=settings.chat_model,
                 max_tokens=settings.max_chat_tokens,
                 response_format={"type": "json_object"},
@@ -590,7 +598,8 @@ def answer_from_context(question: str, retrieved_chunks: list[RetrievedChunk]) -
                 prompt_bundle=prompt_bundle,
                 metadata={"question_chars": str(len(question)), "num_chunks": str(len(retrieved_chunks))},
             ) as generation:
-                response = chat_client.client.chat.completions.create(
+                response = _create_chat_completion(
+                    chat_client,
                     model=settings.chat_model,
                     max_tokens=settings.max_chat_tokens,
                     messages=[
@@ -666,7 +675,8 @@ def generate_follow_up(
             prompt_bundle=prompt_bundle,
             metadata={"question_chars": str(len(question)), "num_chunks": str(len(retrieved_chunks))},
         ) as generation:
-            response = chat_client.client.chat.completions.create(
+            response = _create_chat_completion(
+                chat_client,
                 model=settings.chat_model,
                 max_tokens=120,
                 response_format={"type": "json_object"},
@@ -760,7 +770,8 @@ def generate_structured_answer(
 
             for response_format in response_formats:
                 try:
-                    response = chat_client.client.chat.completions.create(
+                    response = _create_chat_completion(
+                        chat_client,
                         model=settings.chat_model,
                         max_tokens=settings.max_chat_tokens,
                         response_format=response_format,
@@ -858,7 +869,8 @@ def generate_quiz_from_context(
             prompt_bundle=prompt_bundle,
             metadata={"topic": topic, "num_chunks": str(len(retrieved_chunks))},
         ) as generation:
-            response = chat_client.client.chat.completions.create(
+            response = _create_chat_completion(
+                chat_client,
                 model=settings.chat_model,
                 max_tokens=settings.max_chat_tokens,
                 response_format={"type": "json_object"},
@@ -913,7 +925,8 @@ def generate_remediation_from_context(
             prompt_bundle=prompt_bundle,
             metadata={"topic": topic, "num_chunks": str(len(retrieved_chunks))},
         ) as generation:
-            response = chat_client.client.chat.completions.create(
+            response = _create_chat_completion(
+                chat_client,
                 model=settings.chat_model,
                 max_tokens=settings.max_chat_tokens,
                 response_format={"type": "json_object"},
@@ -975,7 +988,8 @@ def generate_study_plan_from_context(
             prompt_bundle=prompt_bundle,
             metadata={"topic": topic, "num_chunks": str(len(retrieved_chunks))},
         ) as generation:
-            response = chat_client.client.chat.completions.create(
+            response = _create_chat_completion(
+                chat_client,
                 model=settings.chat_model,
                 max_tokens=settings.max_chat_tokens,
                 response_format={"type": "json_object"},

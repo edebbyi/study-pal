@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import cast
 
 import streamlit as st
 
@@ -43,7 +44,7 @@ from src.auth.supabase_auth import (
 )
 from src.core.config import settings
 from src.modes.grading import grade_quiz
-from src.core.models import Chunk, FeedbackRating, QuizResult, ResponseFeedback, StudyPlan, StudyQuiz
+from src.core.models import AppMode, Chunk, FeedbackRating, QuizResult, ResponseFeedback, StudyPlan, StudyQuiz
 from src.core.observability import initialize_observability, log_langfuse_event
 from src.core.observability import log_langfuse_score
 from src.core.utils import humanize_label
@@ -682,10 +683,13 @@ def render_message_feedback_form(message: dict[str, object]) -> None:
 
     with st.expander("How was this response?", expanded=False):
         with st.form(f"feedback_form_{message_id}"):
-            rating = st.radio(
-                "Rate this response",
-                options=["Very helpful", "Somewhat helpful", "Not helpful"],
-                horizontal=True,
+            rating = cast(
+                FeedbackRating,
+                st.radio(
+                    "Rate this response",
+                    options=["Very helpful", "Somewhat helpful", "Not helpful"],
+                    horizontal=True,
+                ),
             )
             feedback_text = st.text_area(
                 "Anything else we should know?",
@@ -876,6 +880,15 @@ def _submit_response_feedback(
     """
 
     message_id = str(message["id"])
+    raw_mode = message.get("mode", st.session_state.current_mode)
+    default_mode: AppMode = (
+        cast(AppMode, st.session_state.current_mode)
+        if st.session_state.current_mode in {"ask", "mastery"}
+        else "ask"
+    )
+    mode: AppMode = cast(AppMode, raw_mode) if raw_mode in {"ask", "mastery"} else default_mode
+    raw_citations = message.get("citations", [])
+    citations = [str(citation) for citation in raw_citations] if isinstance(raw_citations, list) else []
     feedback_record = ResponseFeedback(
         message_id=message_id,
         session_id=st.session_state.session_id,
@@ -887,8 +900,8 @@ def _submit_response_feedback(
         rating=rating,
         feedback_text=feedback_text.strip() or None,
         topic=str(message.get("topic")) if message.get("topic") else None,
-        mode=message.get("mode", st.session_state.current_mode),
-        citations=[str(citation) for citation in message.get("citations", [])],
+        mode=mode,
+        citations=citations,
         created_at=datetime.now(timezone.utc).isoformat(),
     )
     save_response_feedback(feedback_record)
@@ -1159,8 +1172,14 @@ def render_quiz_card() -> None:
     quiz = _coerce_study_quiz(entry.get("quiz") if entry else None)
     result = _coerce_quiz_result(entry.get("result") if entry else None)
     remediation_message = entry.get("remediation_message") if entry else None
-    remediation_payload = entry.get("remediation_payload") if entry else None
-    remediation_citations = entry.get("remediation_citations") if entry else []
+    raw_remediation_payload = entry.get("remediation_payload") if entry else None
+    remediation_payload = raw_remediation_payload if isinstance(raw_remediation_payload, dict) else None
+    raw_remediation_citations = entry.get("remediation_citations") if entry else []
+    remediation_citations = (
+        [str(citation) for citation in raw_remediation_citations]
+        if isinstance(raw_remediation_citations, list)
+        else []
+    )
 
     if selected_round == st.session_state.quiz_round and st.session_state.current_quiz:
         quiz = st.session_state.current_quiz

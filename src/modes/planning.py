@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.core.models import StudyPlan
+from src.core.models import InfoLane, StudyPlan
 from src.llm.llm_client import generate_study_plan_from_context
 from src.notes.notes_answering import retrieve_note_chunks
 
@@ -158,10 +158,10 @@ def _fallback_study_plan(
         summary=summary,
         strengths=strengths,
         weak_areas=weak_areas,
-        next_step_lane={
-            "button_label": f"Deep dive into {weakest_area}",
-            "query": f"Explain {weakest_area} in more detail.",
-        },
+        next_step_lane=InfoLane(
+            button_label=f"Deep dive into {weakest_area}",
+            query=f"Explain {weakest_area} in more detail.",
+        ),
     )
 
 

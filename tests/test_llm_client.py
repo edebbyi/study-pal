@@ -46,5 +46,6 @@ def test_ensure_action_lanes_fills_empty_values() -> None:
 
 def test_structured_answer_schema_requires_lane_keys() -> None:
     """Structured-output schema should require both action lanes."""
-    required_keys = set(STRUCTURED_ANSWER_SCHEMA.get("required", []))
+    raw_required = STRUCTURED_ANSWER_SCHEMA.get("required", [])
+    required_keys = set(raw_required) if isinstance(raw_required, list) else set()
     assert {"info_lane", "quiz_lane"}.issubset(required_keys)
