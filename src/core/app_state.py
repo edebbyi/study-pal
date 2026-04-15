@@ -50,6 +50,11 @@ class SessionStateDefaults:
     """Provide defaults for Streamlit session state keys."""
 
     session_id: str = field(default_factory=generate_session_id)
+    user_email: str | None = None
+    user_id: str | None = None
+    auth_email: str = ""
+    auth_code_sent: bool = False
+    auth_error: str | None = None
     messages: list[dict[str, object]] = field(default_factory=list)
     message_feedback: dict[str, dict[str, object]] = field(default_factory=dict)
     uploaded_sources: list[str] = field(default_factory=list)
@@ -94,6 +99,7 @@ class IndexedDocument:
     key_hooks: list[str]
     chunks: list[Chunk]
     size_mb: float
+    user_id: str | None = None
     last_conversation_topic: str | None = None
     last_opened_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
@@ -117,6 +123,7 @@ def _build_workspace(indexed_document: IndexedDocument) -> dict[str, object]:
     workspace = {
         "document_id": indexed_document.document_id,
         "session_id": indexed_document.session_id,
+        "user_id": indexed_document.user_id,
         "filename": indexed_document.filename,
         "document_title": indexed_document.document_title,
         "document_topic": indexed_document.document_topic,
@@ -145,6 +152,7 @@ def build_workspace_from_session() -> dict[str, object] | None:
     workspace = {
         "document_id": f"session-{st.session_state.session_id}",
         "session_id": st.session_state.session_id,
+        "user_id": st.session_state.user_id,
         "filename": filename,
         "document_title": filename.rsplit(".", 1)[0].replace("_", " ").title(),
         "document_topic": filename.rsplit(".", 1)[0].replace("_", " ").title(),

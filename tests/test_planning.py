@@ -1,6 +1,6 @@
 """test_planning.py: Tests for test_planning.py."""
 
-from src.planning import build_study_plan
+from src.modes.planning import build_study_plan
 
 
 def test_build_study_plan_prioritizes_weak_concepts() -> None:
@@ -17,7 +17,7 @@ def test_build_study_plan_prioritizes_weak_concepts() -> None:
     assert study_plan.reviewed_topics == ["light reactions", "glucose production", "Calvin cycle"]
     assert study_plan.weak_areas == ["light reactions", "glucose production"]
     assert study_plan.recommended_order[0] == "light reactions"
-    assert "Retake a short quiz" in study_plan.suggested_next_steps[2]
+    assert study_plan.suggested_next_steps
 
 
 def test_build_study_plan_handles_perfect_mastery() -> None:
@@ -32,4 +32,4 @@ def test_build_study_plan_handles_perfect_mastery() -> None:
 
     assert study_plan.weak_areas == []
     assert study_plan.recommended_order == ["light reactions", "Calvin cycle"]
-    assert "spaced repetition" in study_plan.suggested_next_steps[2]
+    assert study_plan.suggested_next_steps

@@ -35,6 +35,12 @@ from src.core.app_state import (
     store_study_plan,
     store_study_plan_citations,
 )
+from src.auth.supabase_auth import (
+    complete_sign_in_from_callback,
+    is_valid_email_address,
+    send_magic_link,
+    supabase_enabled,
+)
 from src.core.config import settings
 from src.modes.grading import grade_quiz
 from src.core.models import Chunk, FeedbackRating, QuizResult, ResponseFeedback, StudyPlan, StudyQuiz
@@ -108,6 +114,225 @@ def render_hero() -> None:
     )
 
 
+def _render_auth_panel() -> bool:
+    """Render the Supabase magic-link login panel.
+    
+    Returns:
+        bool: True when the user is authenticated or auth is disabled.
+    """
+
+    if not supabase_enabled():
+        return True
+
+    def _first_query_param(name: str) -> str:
+        """Read a Streamlit query param as a single normalized string."""
+        raw_value = st.query_params.get(name, "")
+        if isinstance(raw_value, (list, tuple)):
+            raw_value = raw_value[0] if raw_value else ""
+        return str(raw_value or "").strip()
+
+    def _auth_env() -> str:
+        """Return a lightweight environment label for auth tracing."""
+        redirect = settings.supabase_redirect_url.strip().lower()
+        if "localhost" in redirect or "127.0.0.1" in redirect:
+            return "local"
+        if ".streamlit.app" in redirect:
+            return "streamlit_cloud"
+        return "custom"
+
+    callback_shape = "none"
+    if _first_query_param("code"):
+        callback_shape = "pkce_code"
+    elif _first_query_param("token_hash"):
+        callback_shape = "token_hash"
+    elif _first_query_param("token"):
+        callback_shape = "token"
+    elif _first_query_param("error") or _first_query_param("error_description"):
+        callback_shape = "error"
+
+    # Handle Supabase callback URLs before rendering sign-in controls.
+    if not st.session_state.user_id:
+        callback_user, callback_error, callback_handled = complete_sign_in_from_callback(st.query_params)
+        if callback_shape != "none":
+            log_langfuse_event(
+                "auth_callback_detected",
+                session_id=st.session_state.session_id,
+                metadata={
+                    "callback_shape": callback_shape,
+                    "env": _auth_env(),
+                },
+            )
+        if callback_handled:
+            if callback_error:
+                st.session_state.auth_error = callback_error
+                if not st.session_state.auth_email:
+                    st.session_state.auth_email = _first_query_param("email")
+                log_langfuse_event(
+                    "auth_callback_failure",
+                    session_id=st.session_state.session_id,
+                    metadata={
+                        "callback_shape": callback_shape,
+                        "env": _auth_env(),
+                        "has_email_hint": bool(st.session_state.auth_email),
+                    },
+                )
+            elif callback_user:
+                callback_email = str(callback_user.get("email") or "").strip()
+                callback_user_id = str(callback_user.get("id") or callback_email).strip().lower()
+                st.session_state.user_email = callback_email or None
+                st.session_state.user_id = callback_user_id or None
+                st.session_state.auth_email = ""
+                st.session_state.auth_code_sent = False
+                st.session_state.auth_error = None
+                log_langfuse_event(
+                    "auth_callback_success",
+                    session_id=st.session_state.session_id,
+                    metadata={
+                        "callback_shape": callback_shape,
+                        "env": _auth_env(),
+                        "has_email": bool(callback_email),
+                    },
+                )
+            st.query_params.clear()
+            st.rerun()
+
+    if st.session_state.user_id and st.session_state.user_email:
+        with st.sidebar:
+            st.markdown("### Account")
+            st.caption(st.session_state.user_email)
+            if st.button("Sign out", key="auth_sign_out"):
+                st.session_state.user_email = None
+                st.session_state.user_id = None
+                st.session_state.auth_email = ""
+                st.session_state.auth_code_sent = False
+                st.session_state.auth_error = None
+                st.rerun()
+        return True
+
+    with st.sidebar:
+        st.markdown("### Authentication")
+        st.caption("Sign in on the main panel to continue.")
+
+    st.markdown(
+        """
+        <style>
+          .auth-page-shell {
+            border: 1px solid rgba(255,255,255,0.10);
+            border-radius: 18px;
+            background: radial-gradient(circle at 15% 20%, rgba(70,120,220,0.22), rgba(15,20,30,0.95));
+            padding: 1.2rem 1.2rem;
+            margin-top: 4.5rem;
+            margin-bottom: 1.25rem;
+          }
+          .auth-kicker {
+            display: inline-block;
+            font-size: 0.78rem;
+            color: #bcd8ff;
+            border: 1px solid rgba(147, 197, 253, 0.35);
+            border-radius: 999px;
+            padding: 0.20rem 0.55rem;
+            background: rgba(59,130,246,0.16);
+            margin-bottom: 0.5rem;
+          }
+          .auth-subtle {
+            color: #c8d1de;
+          }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    _, auth_center, _ = st.columns([1.05, 1.1, 1.05], gap="small")
+    with auth_center:
+        st.markdown(
+            """
+            <div class="auth-page-shell">
+              <div class="auth-kicker">Private Workspace Access</div>
+              <h2 style="margin: 0.2rem 0 0.55rem 0;">Welcome Back</h2>
+              <p class="auth-subtle" style="margin: 0 0 0.8rem 0;">
+                Sign in with your email magic link to access your saved study library and feedback history.
+              </p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        email = st.text_input(
+            "Email",
+            value=st.session_state.auth_email,
+            key="auth_email_input",
+            placeholder="you@example.com",
+        )
+        cleaned_email = email.strip()
+        email_is_valid = is_valid_email_address(cleaned_email) if cleaned_email else False
+        if cleaned_email and not email_is_valid:
+            st.error("Enter a valid email address, like name@example.com.")
+        if st.button(
+            "Send magic link",
+            disabled=not cleaned_email or not email_is_valid,
+            key="auth_send_link",
+            use_container_width=True,
+        ):
+            st.session_state.auth_email = cleaned_email
+            ok, err = send_magic_link(st.session_state.auth_email)
+            if ok:
+                st.session_state.auth_code_sent = True
+                st.session_state.auth_error = None
+                log_langfuse_event(
+                    "auth_magic_link_sent",
+                    session_id=st.session_state.session_id,
+                    metadata={"env": _auth_env()},
+                )
+            else:
+                st.session_state.auth_error = err or "Unable to send the sign-in email."
+                log_langfuse_event(
+                    "auth_magic_link_send_failure",
+                    session_id=st.session_state.session_id,
+                    metadata={"env": _auth_env()},
+                )
+
+    if cleaned_email != st.session_state.auth_email:
+        st.session_state.auth_email = cleaned_email
+        st.session_state.auth_code_sent = False
+        if st.session_state.auth_error:
+            st.session_state.auth_error = None
+
+    with auth_center:
+        if st.session_state.auth_code_sent:
+            st.success("Magic link sent. Open your email and click the Log In button.")
+
+        if st.session_state.auth_error:
+            st.error(f"Sign-in issue: {st.session_state.auth_error}")
+            if st.button(
+                "Resend magic link",
+                disabled=(
+                    not st.session_state.auth_email
+                    or not is_valid_email_address(st.session_state.auth_email)
+                ),
+                key="auth_resend_link",
+                use_container_width=True,
+            ):
+                ok, err = send_magic_link(st.session_state.auth_email)
+                if ok:
+                    st.session_state.auth_code_sent = True
+                    st.session_state.auth_error = None
+                    st.success("New magic link sent.")
+                    log_langfuse_event(
+                        "auth_magic_link_resent",
+                        session_id=st.session_state.session_id,
+                        metadata={"env": _auth_env()},
+                    )
+                else:
+                    st.session_state.auth_error = err or "Unable to resend the sign-in email."
+                    log_langfuse_event(
+                        "auth_magic_link_resend_failure",
+                        session_id=st.session_state.session_id,
+                        metadata={"env": _auth_env()},
+                    )
+
+    return False
+
+
 
 def render_mode_overview() -> None:
     """Show the high-level summary of app modes.
@@ -176,6 +401,7 @@ def render_upload_panel() -> None:
         persist_document_library(
             st.session_state.document_library,
             st.session_state.active_document_id,
+            user_id=st.session_state.user_id,
         )
         st.rerun()
 
@@ -298,6 +524,7 @@ def render_document_library() -> None:
                     persist_document_library(
                         st.session_state.document_library,
                         st.session_state.active_document_id,
+                        user_id=st.session_state.user_id,
                     )
                     st.rerun()
                 if st.button(
@@ -542,6 +769,7 @@ def _handle_question(question: str) -> None:
     persist_document_library(
         st.session_state.document_library,
         st.session_state.active_document_id,
+        user_id=st.session_state.user_id,
     )
     st.rerun()
 
@@ -560,11 +788,18 @@ def _enter_mastery_mode(
         goal_text (str | None): Input parameter.
     """
 
-    mastery_session, mastery_progress = start_mastery_loop(
-        question,
-        fallback_topic=fallback_topic,
-        session_id=st.session_state.session_id,
-    )
+    try:
+        mastery_session, mastery_progress = start_mastery_loop(
+            question,
+            fallback_topic=fallback_topic,
+            session_id=st.session_state.session_id,
+        )
+    except TypeError:
+        # Backward-compatibility path for older test doubles or helper signatures.
+        mastery_session, mastery_progress = start_mastery_loop(
+            question,
+            fallback_topic=fallback_topic,
+        )
     set_current_mode("mastery")
     set_conversation_topic(mastery_session.topic)
     st.session_state.quiz_goal = goal_text or mastery_session.topic
@@ -588,6 +823,7 @@ def _enter_mastery_mode(
     persist_document_library(
         st.session_state.document_library,
         st.session_state.active_document_id,
+        user_id=st.session_state.user_id,
     )
     st.rerun()
 
@@ -643,6 +879,7 @@ def _submit_response_feedback(
     feedback_record = ResponseFeedback(
         message_id=message_id,
         session_id=st.session_state.session_id,
+        user_id=st.session_state.user_id,
         document_id=st.session_state.active_document_id,
         filename=st.session_state.uploaded_sources[0] if st.session_state.uploaded_sources else None,
         query=str(message.get("query") or ""),
@@ -660,6 +897,7 @@ def _submit_response_feedback(
     persist_document_library(
         st.session_state.document_library,
         st.session_state.active_document_id,
+        user_id=st.session_state.user_id,
     )
     st.success("Thanks. Your feedback was saved.")
 
@@ -1064,12 +1302,19 @@ def _submit_quiz_answers(quiz: StudyQuiz, quiz_round: int, answers: list[str | N
 
     quiz_result = grade_quiz(quiz, answers)
     store_quiz_result(quiz_result)
-    mastery_progress = advance_mastery_loop(
-        quiz.topic,
-        quiz_result,
-        quiz_round,
-        session_id=st.session_state.session_id,
-    )
+    try:
+        mastery_progress = advance_mastery_loop(
+            quiz.topic,
+            quiz_result,
+            quiz_round,
+            session_id=st.session_state.session_id,
+        )
+    except TypeError:
+        mastery_progress = advance_mastery_loop(
+            quiz.topic,
+            quiz_result,
+            quiz_round,
+        )
     citation_query = f"{quiz.topic} {' '.join(quiz_result.weak_concepts)}".strip()
     store_remediation_message(mastery_progress.remediation_message)
     store_remediation_payload(mastery_progress.remediation_payload)
@@ -1097,6 +1342,7 @@ def _submit_quiz_answers(quiz: StudyQuiz, quiz_round: int, answers: list[str | N
     persist_document_library(
         st.session_state.document_library,
         st.session_state.active_document_id,
+        user_id=st.session_state.user_id,
     )
     st.rerun()
 
@@ -1137,12 +1383,19 @@ def stop_mastery_session() -> None:
     if not st.session_state.study_topic:
         return
     reviewed_concepts = _get_recent_mastery_concepts()
-    mastery_progress = stop_mastery_loop(
-        st.session_state.study_topic,
-        st.session_state.weak_concepts,
-        reviewed_concepts,
-        session_id=st.session_state.session_id,
-    )
+    try:
+        mastery_progress = stop_mastery_loop(
+            st.session_state.study_topic,
+            st.session_state.weak_concepts,
+            reviewed_concepts,
+            session_id=st.session_state.session_id,
+        )
+    except TypeError:
+        mastery_progress = stop_mastery_loop(
+            st.session_state.study_topic,
+            st.session_state.weak_concepts,
+            reviewed_concepts,
+        )
     clear_current_quiz()
     store_remediation_message(None)
     if mastery_progress.study_plan:
@@ -1155,6 +1408,7 @@ def stop_mastery_session() -> None:
     persist_document_library(
         st.session_state.document_library,
         st.session_state.active_document_id,
+        user_id=st.session_state.user_id,
     )
     st.rerun()
 
@@ -1264,6 +1518,7 @@ def render_document_workspace_header() -> None:
             persist_document_library(
                 st.session_state.document_library,
                 st.session_state.active_document_id,
+                user_id=st.session_state.user_id,
             )
             st.rerun()
 
@@ -1459,10 +1714,14 @@ def main() -> None:
 
     st.set_page_config(page_title=settings.app_title, page_icon="📚", layout="wide")
     initialize_session_state()
+    if not _render_auth_panel():
+        return
     ensure_current_mode("ask")
     page = st.sidebar.radio("Page", options=["Study Workspace", "Feedback Admin"])
     if not st.session_state.document_library:
-        document_library, active_document_id = restore_document_library()
+        document_library, active_document_id = restore_document_library(
+            user_id=st.session_state.user_id
+        )
         set_document_library(document_library, active_document_id)
         if document_library:
             st.session_state.library_status_message = (
@@ -1483,9 +1742,12 @@ def main() -> None:
             persist_document_library(
                 st.session_state.document_library,
                 st.session_state.active_document_id,
+                user_id=st.session_state.user_id,
             )
     if not st.session_state.document_library:
-        remote_document_library = rebuild_document_library_from_remote()
+        remote_document_library = rebuild_document_library_from_remote(
+            user_id=st.session_state.user_id
+        )
         if remote_document_library:
             active_document_id = str(remote_document_library[0]["document_id"])
             set_document_library(remote_document_library, active_document_id)
@@ -1496,6 +1758,7 @@ def main() -> None:
             persist_document_library(
                 st.session_state.document_library,
                 st.session_state.active_document_id,
+                user_id=st.session_state.user_id,
             )
     if not st.session_state.observability_enabled:
         st.session_state.observability_enabled = initialize_observability()

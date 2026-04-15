@@ -5,7 +5,7 @@ streamlit
 openai
 
 # Postgres
-psycopg
+psycopg[binary]
 
 # Data validation / structured outputs
 pydantic
@@ -24,6 +24,9 @@ tiktoken
 langfuse
 openlit
 setuptools
+
+# Auth
+supabase
 
 # Testing
 pytest

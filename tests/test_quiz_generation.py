@@ -1,8 +1,8 @@
 """test_quiz_generation.py: Tests for test_quiz_generation.py."""
 
-from src.config import settings
-from src.quiz import _fallback_quiz, _sanitize_study_quiz, is_valid_study_quiz
-from src.models import QuizQuestion, StudyQuiz
+from src.core.config import settings
+from src.modes.quiz import _fallback_quiz, _sanitize_study_quiz, is_valid_study_quiz
+from src.core.models import QuizQuestion, StudyQuiz
 
 
 def test_fallback_quiz_has_expected_question_count_and_matching_answers() -> None:

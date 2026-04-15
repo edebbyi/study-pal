@@ -15,6 +15,38 @@ cache_directory = Path(".studypal_cache")
 document_library_path = cache_directory / "document_library.json"
 legacy_indexed_document_path = cache_directory / "last_indexed_document.json"
 
+
+def _safe_user_slug(user_id: str | None) -> str | None:
+    """Normalize a user id into a filesystem-friendly slug.
+    
+    Args:
+        user_id (str | None): Input parameter.
+    
+    Returns:
+        str | None: Result value.
+    """
+
+    if not user_id:
+        return None
+    slug = "".join(char for char in user_id.strip().lower() if char.isalnum() or char in ("-", "_"))
+    return slug or None
+
+
+def _document_library_path(user_id: str | None) -> Path:
+    """Select the cache file path for a user.
+    
+    Args:
+        user_id (str | None): Input parameter.
+    
+    Returns:
+        Path: Result value.
+    """
+
+    slug = _safe_user_slug(user_id)
+    if not slug:
+        return document_library_path
+    return cache_directory / f"document_library_{slug}.json"
+
 workspace_model_keys: dict[str, type[BaseModel]] = {
     "chunks": Chunk,
     "current_quiz": StudyQuiz,
@@ -70,6 +102,8 @@ def persist_document_library(
     document_library: list[dict[str, object]],
 
     active_document_id: str | None,
+    *,
+    user_id: str | None = None,
 ) -> None:
     """Save the document library and active workspace to disk.
     
@@ -83,22 +117,23 @@ def persist_document_library(
         "active_document_id": active_document_id,
         "document_library": [_serialize_value(workspace) for workspace in document_library],
     }
-    document_library_path.write_text(json.dumps(payload), encoding="utf-8")
+    _document_library_path(user_id).write_text(json.dumps(payload), encoding="utf-8")
 
 
 
-def restore_document_library() -> tuple[list[dict[str, object]], str | None]:
+def restore_document_library(*, user_id: str | None = None) -> tuple[list[dict[str, object]], str | None]:
     """Load the document library and active workspace from disk.
     
     Returns:
         tuple[list[dict[str, object]], str | None]: Result value.
     """
 
-    if not document_library_path.exists():
+    cache_path = _document_library_path(user_id)
+    if not cache_path.exists():
         return _restore_legacy_document_library()
 
     try:
-        payload = json.loads(document_library_path.read_text(encoding="utf-8"))
+        payload = json.loads(cache_path.read_text(encoding="utf-8"))
         document_library = [
             _deserialize_workspace(workspace)
             for workspace in payload.get("document_library", [])

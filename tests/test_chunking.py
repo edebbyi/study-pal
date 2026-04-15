@@ -1,7 +1,7 @@
 """test_chunking.py: Tests for test_chunking.py."""
 
-from src.chunking import chunk_document, split_text
-from src.models import Document, Page
+from src.data.chunking import chunk_document, split_text
+from src.core.models import Document, Page
 
 
 def test_split_text_respects_overlap() -> None:

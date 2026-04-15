@@ -22,6 +22,7 @@ feedback_table_ddl = """
 CREATE TABLE IF NOT EXISTS response_feedback (
     message_id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL,
+    user_id TEXT,
     document_id TEXT,
     filename TEXT,
     query TEXT NOT NULL,
@@ -36,6 +37,11 @@ CREATE TABLE IF NOT EXISTS response_feedback (
 )
 """
 
+# Additive SQLite columns that may be missing from older local databases.
+feedback_sqlite_migration_columns: dict[str, str] = {
+    "user_id": "TEXT",
+}
+
 
 def _feedback_row(feedback: ResponseFeedback) -> tuple[object, ...]:
     """Convert a feedback model into a database row.
@@ -49,6 +55,7 @@ def _feedback_row(feedback: ResponseFeedback) -> tuple[object, ...]:
     return (
         feedback.message_id,
         feedback.session_id,
+        feedback.user_id,
         feedback.document_id,
         feedback.filename,
         feedback.query,
@@ -77,6 +84,15 @@ def _ensure_feedback_table(connection: sqlite3.Connection) -> None:
         connection (sqlite3.Connection): Active SQLite connection.
     """
     connection.execute(feedback_table_ddl)
+    existing_columns = {
+        row[1]
+        for row in connection.execute("PRAGMA table_info(response_feedback)").fetchall()
+    }
+    for column_name, column_type in feedback_sqlite_migration_columns.items():
+        if column_name not in existing_columns:
+            connection.execute(
+                f"ALTER TABLE response_feedback ADD COLUMN {column_name} {column_type}"
+            )
     connection.commit()
 
 
@@ -95,6 +111,7 @@ def _persist_feedback_sqlite(feedback: ResponseFeedback) -> None:
             INSERT OR REPLACE INTO response_feedback (
                 message_id,
                 session_id,
+                user_id,
                 document_id,
                 filename,
                 query,
@@ -106,7 +123,7 @@ def _persist_feedback_sqlite(feedback: ResponseFeedback) -> None:
                 citations_json,
                 metadata_json,
                 created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             _feedback_row(feedback),
         )
@@ -141,6 +158,7 @@ def _persist_feedback_postgres(feedback: ResponseFeedback) -> bool:
                     INSERT INTO response_feedback (
                         message_id,
                         session_id,
+                        user_id,
                         document_id,
                         filename,
                         query,
@@ -152,9 +170,10 @@ def _persist_feedback_postgres(feedback: ResponseFeedback) -> bool:
                         citations_json,
                         metadata_json,
                         created_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (message_id) DO UPDATE SET
                         session_id = EXCLUDED.session_id,
+                        user_id = EXCLUDED.user_id,
                         document_id = EXCLUDED.document_id,
                         filename = EXCLUDED.filename,
                         query = EXCLUDED.query,
@@ -187,6 +206,7 @@ def _row_to_feedback(row: tuple[Any, ...]) -> ResponseFeedback:
     (
         message_id,
         session_id,
+        user_id,
         document_id,
         filename,
         query,
@@ -202,6 +222,7 @@ def _row_to_feedback(row: tuple[Any, ...]) -> ResponseFeedback:
     return ResponseFeedback(
         message_id=message_id,
         session_id=session_id,
+        user_id=user_id,
         document_id=document_id,
         filename=filename,
         query=query,
@@ -241,6 +262,7 @@ def _fetch_feedback_postgres(limit: int) -> list[ResponseFeedback] | None:
                     SELECT
                         message_id,
                         session_id,
+                        user_id,
                         document_id,
                         filename,
                         query,
@@ -284,6 +306,7 @@ def _fetch_feedback_sqlite(limit: int) -> list[ResponseFeedback]:
             SELECT
                 message_id,
                 session_id,
+                user_id,
                 document_id,
                 filename,
                 query,
@@ -341,6 +364,7 @@ def _persist_feedback_langfuse(feedback: ResponseFeedback) -> None:
             comment=feedback.feedback_text,
             metadata={
                 "message_id": feedback.message_id,
+                "user_id": feedback.user_id,
                 "document_id": feedback.document_id,
                 "filename": feedback.filename,
                 "query": feedback.query,

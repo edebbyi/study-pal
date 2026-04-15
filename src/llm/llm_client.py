@@ -34,6 +34,44 @@ from src.llm.prompts import (
     build_study_plan_prompt,
 )
 
+STRUCTURED_ANSWER_SCHEMA: dict[str, object] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["answer", "citations", "topic_subject", "info_lane", "quiz_lane"],
+    "properties": {
+        "answer": {"type": "string"},
+        "citations": {"type": "array", "items": {"type": "string"}},
+        "topic_subject": {"type": "string"},
+        "info_lane": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["button_label", "query"],
+            "properties": {
+                "button_label": {"type": "string"},
+                "query": {"type": "string"},
+            },
+        },
+        "quiz_lane": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["button_label", "intent"],
+            "properties": {
+                "button_label": {"type": "string"},
+                "intent": {"type": "string"},
+            },
+        },
+    },
+}
+STRUCTURED_ANSWER_RESPONSE_FORMAT_JSON_SCHEMA: dict[str, object] = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "structured_answer",
+        "strict": True,
+        "schema": STRUCTURED_ANSWER_SCHEMA,
+    },
+}
+JSON_OBJECT_RESPONSE_FORMAT: dict[str, str] = {"type": "json_object"}
+
 
 @dataclass(frozen=True)
 class ChatClient:
@@ -243,20 +281,121 @@ def _extract_message_text(response) -> str:
 
 
 def _clean_json(raw_response: str) -> str:
-    """Clean json.
-    
-    Args:
-        raw_response (str): Input parameter.
-    
-    Returns:
-        str: Formatted text result.
-    """
+    """Normalize model output before JSON parsing.
 
+    Args:
+        raw_response (str): Raw model output text.
+
+    Returns:
+        str: Cleaned output text.
+    """
     cleaned = raw_response.strip()
     if cleaned.startswith("```"):
-        cleaned = cleaned.replace("```json", "").replace("```", "").strip()  # strip fenced JSON wrappers
+        cleaned = cleaned.replace("```json", "").replace("```", "").strip()  # strip fenced wrappers
     return cleaned
 
+
+def _extract_answer_tag(raw_response: str) -> str:
+    """Extract `<answer>` content when tag wrappers are present.
+
+    Args:
+        raw_response (str): Raw model output.
+
+    Returns:
+        str: Tagged answer content or original output.
+    """
+    match = re.search(r"<answer>(.*?)</answer>", raw_response, flags=re.IGNORECASE | re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    return raw_response
+
+
+def _strip_answer_sources_block(text: str) -> str:
+    """Remove model-generated source headings from the answer body.
+
+    Args:
+        text (str): Answer text that may include a sources block.
+
+    Returns:
+        str: Sanitized answer text.
+    """
+    lines = [line.rstrip() for line in text.splitlines()]
+    heading_index = None
+    for index, line in enumerate(lines):
+        normalized = re.sub(r"[^a-z]", "", line.lower())
+        if normalized in {"sources", "sourcesused", "citations", "references"}:
+            heading_index = index
+            break
+    if heading_index is None:
+        return text.strip()
+    return "\n".join(lines[:heading_index]).strip()
+
+
+def _parse_json_payload(raw_response: str) -> dict[str, object]:
+    """Parse JSON object payloads from model output.
+
+    Args:
+        raw_response (str): Raw model output.
+
+    Returns:
+        dict[str, object]: Parsed payload.
+    """
+    cleaned = _clean_json(raw_response)
+    try:
+        parsed = json.loads(cleaned)
+        if isinstance(parsed, dict):
+            return parsed
+    except json.JSONDecodeError:
+        pass
+
+    tagged_answer = _extract_answer_tag(cleaned)
+    if tagged_answer != cleaned:
+        parsed = json.loads(_clean_json(tagged_answer))
+        if isinstance(parsed, dict):
+            return parsed
+
+    raise ValueError("Model response is not a valid JSON object")
+
+
+def _repair_structured_answer_payload(
+    *,
+    chat_client: ChatClient,
+    prompt_text: str,
+    raw_output: str,
+) -> dict[str, object] | None:
+    """Try to repair malformed structured-answer output.
+
+    Args:
+        chat_client (ChatClient): Active chat client.
+        prompt_text (str): Original prompt text.
+        raw_output (str): Malformed output that needs repair.
+
+    Returns:
+        dict[str, object] | None: Repaired payload when successful.
+    """
+    repair_prompt = (
+        "Fix the malformed JSON so it matches this schema exactly.\n"
+        "Return only a valid JSON object.\n\n"
+        f"Schema:\n{json.dumps(STRUCTURED_ANSWER_SCHEMA)}\n\n"
+        f"Original prompt:\n{prompt_text}\n\n"
+        f"Malformed output:\n{raw_output}"
+    )
+    try:
+        response = chat_client.client.chat.completions.create(
+            model=settings.chat_model,
+            max_tokens=settings.max_chat_tokens,
+            response_format=JSON_OBJECT_RESPONSE_FORMAT,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You repair malformed JSON and return only valid JSON.",
+                },
+                {"role": "user", "content": repair_prompt},
+            ],
+        )
+        return _parse_json_payload(_extract_message_text(response))
+    except (APIConnectionError, APIStatusError, APITimeoutError, ValueError, json.JSONDecodeError):
+        return None
 
 
 def _truncate_sentences(text: str, max_sentences: int) -> str:
@@ -301,6 +440,58 @@ def _ensure_info_lane_emoji(label: str, fallback_emoji: str = "🧠") -> str:
         return f"{fallback_emoji} {stripped}"
     return stripped
 
+
+def _derive_subject(question: str, structured_topic_subject: str | None) -> str:
+    """Derive a compact subject label for default action lanes.
+
+    Args:
+        question (str): User question text.
+        structured_topic_subject (str | None): Subject label returned by the model.
+
+    Returns:
+        str: Short subject text suitable for button labels.
+    """
+    if structured_topic_subject and structured_topic_subject.strip():
+        return structured_topic_subject.strip()
+
+    raw = question.strip().rstrip("?.! ")
+    raw = re.sub(
+        r"^(what\s+is|what\s+are|who\s+is|define|explain|tell\s+me\s+about|how\s+does|how\s+do)\s+",
+        "",
+        raw,
+        flags=re.IGNORECASE,
+    )
+    raw = re.sub(r"^the\s+", "", raw, flags=re.IGNORECASE).strip()
+    if not raw:
+        return "this topic"
+    return raw[:60]
+
+
+def _ensure_action_lanes(structured: StructuredAnswer, question: str) -> None:
+    """Ensure every structured answer has usable info and quiz lanes.
+
+    Args:
+        structured (StructuredAnswer): Parsed structured payload.
+        question (str): User question text.
+    """
+    subject = _derive_subject(question, structured.topic_subject)
+
+    if structured.info_lane is None:
+        structured.info_lane = InfoLane(
+            button_label=f"🧠 Why is {subject} important?",
+            query=f"Explain {subject} in more detail from the notes.",
+        )
+    else:
+        if not structured.info_lane.button_label.strip():
+            structured.info_lane.button_label = f"🧠 Why is {subject} important?"
+        if not structured.info_lane.query.strip():
+            structured.info_lane.query = f"Explain {subject} in more detail from the notes."
+    structured.info_lane.button_label = _ensure_info_lane_emoji(structured.info_lane.button_label)
+
+    if structured.quiz_lane is None:
+        structured.quiz_lane = QuizLane(button_label=f"Test your {subject} knowledge")
+    elif not structured.quiz_lane.button_label.strip():
+        structured.quiz_lane.button_label = f"Test your {subject} knowledge"
 
 
 def _strip_inline_citations(text: str) -> str:
@@ -559,32 +750,57 @@ def generate_structured_answer(
             prompt_bundle=prompt_bundle,
             metadata={"question_chars": str(len(question)), "num_chunks": str(len(retrieved_chunks))},
         ) as generation:
-            response = chat_client.client.chat.completions.create(
-                model=settings.chat_model,
-                max_tokens=settings.max_chat_tokens,
-                response_format={"type": "json_object"},
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You return structured, note-grounded answers and action lanes in JSON.",
-                    },
-                    {"role": "user", "content": prompt_bundle.text},
-                ],
-            )
-            output_text = _extract_message_text(response)
-            _update_generation(generation, output_text, response)
-        payload = json.loads(_clean_json(output_text))
+            response = None
+            output_text = ""
+            payload: dict[str, object] | None = None
+            response_formats: list[dict[str, object]] = [
+                STRUCTURED_ANSWER_RESPONSE_FORMAT_JSON_SCHEMA,
+                JSON_OBJECT_RESPONSE_FORMAT,
+            ]
+
+            for response_format in response_formats:
+                try:
+                    response = chat_client.client.chat.completions.create(
+                        model=settings.chat_model,
+                        max_tokens=settings.max_chat_tokens,
+                        response_format=response_format,
+                        messages=[
+                            {
+                                "role": "system",
+                                "content": (
+                                    "You return structured, note-grounded answers and action lanes in JSON. "
+                                    "Do not reveal chain-of-thought."
+                                ),
+                            },
+                            {"role": "user", "content": prompt_bundle.text},
+                        ],
+                    )
+                    output_text = _extract_message_text(response)
+                    payload = _parse_json_payload(output_text)
+                    break
+                except (APIConnectionError, APIStatusError, APITimeoutError):
+                    # Try the next response format strategy.
+                    continue
+                except (ValueError, json.JSONDecodeError):
+                    # Try to repair malformed JSON once before falling back.
+                    payload = _repair_structured_answer_payload(
+                        chat_client=chat_client,
+                        prompt_text=prompt_bundle.text,
+                        raw_output=output_text,
+                    )
+                    if payload is not None:
+                        break
+            if response is not None:
+                _update_generation(generation, output_text, response)
+        if payload is None:
+            raise ValueError("Unable to parse structured answer payload")
         structured = StructuredAnswer.model_validate(payload)
         trace_id, observation_id = _extract_generation_ids(generation)
-        structured.answer = _truncate_sentences(_strip_inline_citations(structured.answer), 4)
-        if structured.info_lane:
-            structured.info_lane.button_label = _ensure_info_lane_emoji(
-                structured.info_lane.button_label
-            )
-            if not structured.info_lane.query.strip():
-                structured.info_lane.query = question
-        if structured.quiz_lane and not structured.quiz_lane.button_label.strip():
-            structured.quiz_lane.button_label = "Test your knowledge on this"
+        sanitized_answer = _strip_answer_sources_block(structured.answer)
+        structured.answer = _truncate_sentences(_strip_inline_citations(sanitized_answer), 4)
+        _ensure_action_lanes(structured, question)
+        if not structured.citations:
+            structured.citations = [chunk.citation for chunk in retrieved_chunks]
         structured.trace_id = trace_id
         structured.observation_id = observation_id
         if structured.topic_subject:

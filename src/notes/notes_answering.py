@@ -328,6 +328,7 @@ def build_answer_response(question: str) -> TeachingResponse:
         chunks=st.session_state.chunks,
         session_id=st.session_state.session_id,
         document_id=st.session_state.active_document_id,
+        user_id=st.session_state.user_id,
     )
     return answer_question(question, retrieved_chunks)
 
@@ -376,6 +377,7 @@ def build_structured_answer_response(question: str) -> StructuredAnswer:
         chunks=st.session_state.chunks,
         session_id=st.session_state.session_id,
         document_id=st.session_state.active_document_id,
+        user_id=st.session_state.user_id,
     )
     example = (
         "Example:\n"
@@ -445,6 +447,7 @@ def retrieve_note_chunks(query: str) -> list[RetrievedChunk]:
         chunks=session_chunks,
         session_id=session_id,
         document_id=document_id,
+        user_id=st.session_state.user_id if "user_id" in st.session_state else None,
     )
 
 

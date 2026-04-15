@@ -111,6 +111,10 @@ def _normalize_wrap_up(
         )
 
     return StudyPlan(
+        topic=topic,
+        reviewed_topics=reviewed,
+        recommended_order=weak + [item for item in reviewed if item.casefold() not in weak_set],
+        suggested_next_steps=[plan.next_step_lane.query] if plan.next_step_lane else [],
         mastery_score=plan.mastery_score or _estimate_mastery_score(reviewed, weak),
         summary=summary or f"We reviewed {', '.join(reviewed)} during this session.",
         strengths=strengths,
@@ -146,6 +150,10 @@ def _fallback_study_plan(
         strengths = ["More practice needed"]
 
     return StudyPlan(
+        topic=topic,
+        reviewed_topics=reviewed_topics,
+        recommended_order=weak_areas + [item for item in reviewed_topics if item not in weak_areas],
+        suggested_next_steps=[f"Review {weakest_area} with one worked example."],
         mastery_score=_estimate_mastery_score(reviewed_topics, weak_areas),
         summary=summary,
         strengths=strengths,

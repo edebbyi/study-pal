@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from src.vector_store import rebuild_document_library_from_remote
-import src.vector_store as vector_store
+from src.data.vector_store import rebuild_document_library_from_remote
+import src.data.vector_store as vector_store
 
 
 class FakeVector:

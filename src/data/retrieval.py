@@ -194,6 +194,7 @@ def retrieve_chunks(
     session_id: str,
     *,
     document_id: str | None = None,
+    user_id: str | None = None,
 
     top_k: int | None = None,
 ) -> list[RetrievedChunk]:
@@ -204,6 +205,7 @@ def retrieve_chunks(
         chunks (list[Chunk]): Candidate chunks to evaluate or return.
         session_id (str): Session identifier for the current chat.
         document_id (str | None): Document identifier for the current workspace.
+        user_id (str | None): Input parameter.
         top_k (int | None): Input parameter.
     
     Returns:
@@ -225,6 +227,7 @@ def retrieve_chunks(
             session_id,
             candidate_k,
             document_id=document_id,
+            user_id=user_id,
         )
         if remote_results and not wants_definition:
             reranked = _rerank_chunks(question, remote_results, top_k)

@@ -54,6 +54,7 @@ class Chunk(BaseModel):
     document_summary: str | None = None
     topic: str | None = None
     chapter: str | None = None
+    user_id: str | None = None
 
 
 class RetrievedChunk(BaseModel):
@@ -122,6 +123,7 @@ class ResponseFeedback(BaseModel):
 
     message_id: str
     session_id: str
+    user_id: str | None = None
     document_id: str | None = None
     filename: str | None = None
     query: str
@@ -173,9 +175,13 @@ class QuizResult(BaseModel):
 class StudyPlan(BaseModel):
     """Summarize a session wrap-up and next step."""
 
-    mastery_score: str
-    summary: str
-    strengths: list[str]
+    topic: str | None = None
+    reviewed_topics: list[str] = Field(default_factory=list)
+    recommended_order: list[str] = Field(default_factory=list)
+    suggested_next_steps: list[str] = Field(default_factory=list)
+    mastery_score: str = ""
+    summary: str = ""
+    strengths: list[str] = Field(default_factory=list)
     weak_areas: list[str]
     next_step_lane: InfoLane | None = None
 
