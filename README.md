@@ -12,10 +12,10 @@ Study Pal is a Streamlit study app for note-grounded Q&A and guided mastery loop
 ![Study Pal demo](docs/demo.gif)
 
 ### Ask Mode
-<video src="docs/ask-mode.mov" controls loop muted playsinline width="920"></video>
+![Ask Mode](docs/ask-mode.gif)
 
 ### Mastery Mode
-<video src="docs/mastery-mode.mov" controls loop muted playsinline width="920"></video>
+![Mastery Mode](docs/mastery-mode.gif)
 
 ## Quick Start (Local)
 
