@@ -27,6 +27,7 @@ setuptools
 
 # Auth
 supabase
+cryptography
 
 # Testing
 pytest

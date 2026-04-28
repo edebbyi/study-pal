@@ -12,6 +12,7 @@ from langfuse import get_client
 from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI
 
 from src.core.config import settings
+from src.core.openrouter_credentials import get_effective_openrouter_api_key
 from src.core.models import (
     DocumentMetadata,
     InfoLane,
@@ -88,11 +89,12 @@ def _get_chat_client() -> ChatClient | None:
         ChatClient | None: Result value.
     """
 
-    if not settings.openrouter_api_key:
+    api_key = get_effective_openrouter_api_key()
+    if not api_key:
         return None
     return ChatClient(
         client=OpenAI(
-            api_key=settings.openrouter_api_key,
+            api_key=api_key,
             base_url=settings.openrouter_base_url,
         ),
         enable_tracing=langfuse_enabled(),  # defer Langfuse wiring unless explicitly enabled
@@ -627,7 +629,7 @@ def answer_from_context(question: str, retrieved_chunks: list[RetrievedChunk]) -
     answer = (
         "Based on your notes, the most relevant passage says:\n\n"
         f"{top_chunk.text}\n\n"
-        "This is a retrieval-based fallback answer. Add API credentials to upgrade this to a fuller generated explanation."
+        "This is a retrieval-based fallback answer. Add your OpenRouter key in Settings to upgrade this answer."
     )
     return TeachingResponse(
         answer=answer,

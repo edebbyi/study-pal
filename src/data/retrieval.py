@@ -8,6 +8,7 @@ import json
 from urllib import request, error
 
 from src.core.config import settings
+from src.core.openrouter_credentials import get_effective_openrouter_api_key
 from src.core.observability import log_langfuse_event
 from src.data.embeddings import embed_text, is_embedding_vector
 from src.core.models import Chunk, RetrievedChunk
@@ -112,7 +113,8 @@ def _rerank_chunks(
         list[RetrievedChunk]: List of results.
     """
 
-    if not settings.rerank_model or not settings.openrouter_api_key:
+    api_key = get_effective_openrouter_api_key()
+    if not settings.rerank_model or not api_key:
         return chunks
     if len(chunks) <= 1:
         return chunks
@@ -124,7 +126,7 @@ def _rerank_chunks(
         "top_n": min(top_n, len(chunks)),
     }
     headers = {
-        "Authorization": f"Bearer {settings.openrouter_api_key}",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
     endpoint = settings.openrouter_base_url.rstrip("/") + "/rerank"

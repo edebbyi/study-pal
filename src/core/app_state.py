@@ -97,6 +97,12 @@ class SessionStateDefaults:
     auth_email: str = ""
     auth_code_sent: bool = False
     auth_error: str | None = None
+    show_openrouter_setup_prompt: bool = False
+    dismiss_openrouter_key_banner: bool = False
+    user_openrouter_api_key: str | None = None
+    user_openrouter_key_hint: str | None = None
+    user_openrouter_key_updated_at: str | None = None
+    openrouter_key_loaded_for_user: str | None = None
     messages: list[dict[str, object]] = field(default_factory=list)
     message_feedback: dict[str, dict[str, object]] = field(default_factory=dict)
     uploaded_sources: list[str] = field(default_factory=list)
