@@ -9,6 +9,7 @@ from typing import TypeAlias, TypeGuard
 from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI
 
 from src.core.config import settings
+from src.core.openrouter_credentials import get_effective_openrouter_api_key
 from src.core.observability import configure_langfuse_environment, langfuse_enabled, log_langfuse_event
 
 
@@ -31,7 +32,8 @@ def _get_embedding_client() -> EmbeddingClient | None:
         EmbeddingClient | None: Result value.
     """
 
-    if not settings.openrouter_api_key:
+    api_key = get_effective_openrouter_api_key()
+    if not api_key:
         return None
     if langfuse_enabled():
         configure_langfuse_environment()
@@ -40,7 +42,7 @@ def _get_embedding_client() -> EmbeddingClient | None:
 
             return EmbeddingClient(
                 client=LangfuseOpenAI(
-                    api_key=settings.openrouter_api_key,
+                    api_key=api_key,
                     base_url=settings.openrouter_base_url,
                 ),
                 enable_tracing=True,
@@ -49,7 +51,7 @@ def _get_embedding_client() -> EmbeddingClient | None:
             pass
     return EmbeddingClient(
         client=OpenAI(
-            api_key=settings.openrouter_api_key,
+            api_key=api_key,
             base_url=settings.openrouter_base_url,
         ),
         enable_tracing=False,

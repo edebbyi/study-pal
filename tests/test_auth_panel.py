@@ -60,12 +60,12 @@ def _prepare_streamlit_mocks(monkeypatch) -> _SessionState:
     return state
 
 
-def test_auth_panel_bypasses_when_supabase_disabled(monkeypatch) -> None:
-    """Auth panel should allow app boot when Supabase auth is not configured."""
+def test_auth_panel_blocks_when_supabase_disabled(monkeypatch) -> None:
+    """Auth panel should block app boot when Supabase auth is not configured."""
     _prepare_streamlit_mocks(monkeypatch)
     monkeypatch.setattr(app, "supabase_enabled", lambda: False)
 
-    assert app._render_auth_panel() is True
+    assert app._render_auth_panel() is False
 
 
 def test_auth_panel_returns_true_when_user_already_authenticated(monkeypatch) -> None:

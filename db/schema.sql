@@ -32,3 +32,16 @@ CREATE INDEX IF NOT EXISTS response_feedback_topic_idx
 -- Support user-level filtering when multi-user auth is enabled.
 CREATE INDEX IF NOT EXISTS response_feedback_user_id_idx
     ON response_feedback (user_id);
+
+-- Persist encrypted per-user OpenRouter keys for BYOK settings.
+CREATE TABLE IF NOT EXISTS user_openrouter_keys (
+    user_id TEXT PRIMARY KEY,
+    encrypted_api_key TEXT NOT NULL,
+    key_hint TEXT NOT NULL,
+    key_fingerprint TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS user_openrouter_keys_updated_at_idx
+    ON user_openrouter_keys (updated_at DESC);

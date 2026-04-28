@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import html
 from typing import cast
 
 import streamlit as st
@@ -42,7 +43,14 @@ from src.auth.supabase_auth import (
     send_magic_link,
     supabase_enabled,
 )
+from src.auth.user_openrouter_keys import (
+    delete_user_openrouter_key,
+    load_user_openrouter_key,
+    openrouter_key_storage_ready,
+    save_user_openrouter_key,
+)
 from src.core.config import settings
+from src.core.openrouter_credentials import get_effective_openrouter_api_key
 from src.modes.grading import grade_quiz
 from src.core.models import AppMode, Chunk, FeedbackRating, QuizResult, ResponseFeedback, StudyPlan, StudyQuiz
 from src.core.observability import initialize_observability, log_langfuse_event
@@ -100,10 +108,6 @@ def render_hero() -> None:
     st.markdown(
         """
         <div style="padding: 0.5rem 0 1.25rem 0;">
-            <div style="display: inline-block; padding: 0.35rem 0.75rem; border: 1px solid rgba(255,255,255,0.12);
-            border-radius: 999px; font-size: 0.9rem; color: #9ec5ff; background: rgba(50, 110, 190, 0.14);">
-                Notes in, study loop out
-            </div>
             <h1 style="margin: 1rem 0 0.4rem 0; font-size: 4rem; line-height: 0.95;">Study Pal</h1>
             <p style="max-width: 46rem; font-size: 1.15rem; color: #c7ccd6; margin: 0;">
                 Upload your class notes, ask grounded questions, or switch into a guided mastery loop
@@ -115,6 +119,181 @@ def render_hero() -> None:
     )
 
 
+def _clear_user_openrouter_key_state() -> None:
+    """Clear any per-user OpenRouter key data from session state."""
+    st.session_state.user_openrouter_api_key = None
+    st.session_state.user_openrouter_key_hint = None
+    st.session_state.user_openrouter_key_updated_at = None
+    st.session_state.openrouter_key_loaded_for_user = None
+
+
+def _load_user_openrouter_key_into_session(*, force: bool = False) -> None:
+    """Load the signed-in user's saved OpenRouter key into session state.
+
+    Args:
+        force (bool): Whether to force a refresh from storage.
+    """
+    user_id = cast(str | None, st.session_state.user_id)
+    if not user_id:
+        _clear_user_openrouter_key_state()
+        return
+
+    loaded_for_user = cast(str | None, st.session_state.openrouter_key_loaded_for_user)
+    if loaded_for_user == user_id and not force:
+        return
+
+    record, _ = load_user_openrouter_key(user_id)
+    if record is None:
+        st.session_state.user_openrouter_api_key = None
+        st.session_state.user_openrouter_key_hint = None
+        st.session_state.user_openrouter_key_updated_at = None
+    else:
+        st.session_state.user_openrouter_api_key = record.api_key
+        st.session_state.user_openrouter_key_hint = record.key_hint
+        st.session_state.user_openrouter_key_updated_at = record.updated_at
+    st.session_state.openrouter_key_loaded_for_user = user_id
+
+
+def _render_dismissible_openrouter_banner(message: str) -> None:
+    """Render the OpenRouter key reminder with an in-banner dismiss control.
+
+    Args:
+        message (str): Banner message text.
+    """
+    dismiss_query = str(st.query_params.get("dismiss_openrouter_banner", "")).strip().lower()
+    if dismiss_query in {"1", "true", "yes"}:
+        st.session_state.dismiss_openrouter_key_banner = True
+        try:
+            del st.query_params["dismiss_openrouter_banner"]
+        except Exception:
+            pass
+
+    if st.session_state.dismiss_openrouter_key_banner:
+        return
+
+    safe_message = html.escape(message)
+    st.markdown(
+        f"""
+        <style>
+          .openrouter-banner {{
+            position: relative;
+            background: linear-gradient(135deg, rgba(31, 56, 95, 0.82), rgba(22, 40, 70, 0.82));
+            border: 1px solid rgba(104, 147, 220, 0.34);
+            border-radius: 0.80rem;
+            padding: 1.15rem 2.35rem 1.15rem 1.15rem;
+            margin: 0 0 0.8rem 0;
+          }}
+          .openrouter-banner-message {{
+            color: #d8e7ff;
+            font-size: 1.05rem;
+            line-height: 1.35;
+            font-weight: 520;
+          }}
+          .openrouter-banner-dismiss-form {{
+            position: absolute;
+            top: 0.48rem;
+            right: 0.60rem;
+            margin: 0;
+          }}
+          .openrouter-banner-dismiss {{
+            min-height: 1.45rem;
+            height: 1.45rem;
+            min-width: 1.45rem;
+            width: 1.45rem;
+            border: none;
+            background: transparent;
+            color: rgba(216, 231, 255, 0.85);
+            font-size: 1.15rem;
+            line-height: 1;
+            padding: 0;
+            border-radius: 0.28rem;
+            cursor: pointer;
+          }}
+          .openrouter-banner-dismiss:hover {{
+            color: #ffffff;
+            background: rgba(255, 255, 255, 0.10);
+          }}
+        </style>
+        <div class="openrouter-banner">
+          <form method="get" class="openrouter-banner-dismiss-form">
+            <input type="hidden" name="dismiss_openrouter_banner" value="1" />
+            <button type="submit" class="openrouter-banner-dismiss" aria-label="Dismiss">×</button>
+          </form>
+          <div class="openrouter-banner-message">{safe_message}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_settings_page() -> None:
+    """Render account-level settings, including per-user OpenRouter key storage."""
+    if not st.session_state.user_id:
+        st.markdown("## Settings")
+        st.caption("Manage account-level preferences for your study workspace.")
+        st.info("Sign in to manage your personal OpenRouter key.")
+        return
+
+    _load_user_openrouter_key_into_session()
+    storage_ready, storage_error = openrouter_key_storage_ready()
+    has_saved_key = bool(st.session_state.user_openrouter_api_key)
+
+    if not has_saved_key:
+        _render_dismissible_openrouter_banner("No saved OpenRouter key found for this account.")
+
+    st.markdown("## Settings")
+    st.caption("Manage account-level preferences for your study workspace.")
+
+    st.markdown("### OpenRouter API Key")
+    st.markdown(
+        "[Get your OpenRouter API key](https://openrouter.ai/keys)"
+    )
+    if storage_ready:
+        st.caption("Your key is encrypted before being stored in the database.")
+    elif storage_error:
+        st.caption(storage_error)
+
+    saved_key_hint = cast(str | None, st.session_state.user_openrouter_key_hint)
+    saved_key_updated_at = cast(str | None, st.session_state.user_openrouter_key_updated_at)
+    if has_saved_key:
+        status = f"Saved key: {saved_key_hint or 'hidden'}"
+        if saved_key_updated_at:
+            status += f" (updated {saved_key_updated_at})"
+        st.success(status)
+
+    # Streamlit disallows mutating a widget's session key after it is instantiated
+    # in the same run; defer field clearing to a pre-widget rerun checkpoint.
+    if st.session_state.get("clear_settings_openrouter_key_input", False):
+        st.session_state.settings_openrouter_key_input = ""
+        st.session_state.clear_settings_openrouter_key_input = False
+
+    new_key = st.text_input(
+        "OpenRouter API key",
+        key="settings_openrouter_key_input",
+        type="password",
+        placeholder="sk-or-v1-...",
+    ).strip()
+
+    save_disabled = not new_key
+    if st.button("Save key", key="settings_save_openrouter_key", disabled=save_disabled):
+        ok, error = save_user_openrouter_key(cast(str, st.session_state.user_id), new_key)
+        if ok:
+            _load_user_openrouter_key_into_session(force=True)
+            st.session_state.clear_settings_openrouter_key_input = True
+            st.session_state.dismiss_openrouter_key_banner = True
+            st.rerun()
+        else:
+            st.error(error or "Unable to save your OpenRouter key.")
+
+    delete_disabled = (not storage_ready) or (not has_saved_key)
+    if st.button("Delete saved key", key="settings_delete_openrouter_key", disabled=delete_disabled):
+        ok, error = delete_user_openrouter_key(cast(str, st.session_state.user_id))
+        if ok:
+            _load_user_openrouter_key_into_session(force=True)
+            st.success("Deleted your saved OpenRouter key.")
+        else:
+            st.error(error or "Unable to delete your OpenRouter key.")
+
 def _render_auth_panel() -> bool:
     """Render the Supabase magic-link login panel.
     
@@ -123,7 +302,57 @@ def _render_auth_panel() -> bool:
     """
 
     if not supabase_enabled():
-        return True
+        with st.sidebar:
+            st.markdown("### Authentication")
+            st.caption("Sign-in is required to continue.")
+
+        st.markdown(
+            """
+            <style>
+              .auth-page-shell {
+                border: 1px solid rgba(255,255,255,0.10);
+                border-radius: 18px;
+                background: radial-gradient(circle at 15% 20%, rgba(70,120,220,0.22), rgba(15,20,30,0.95));
+                padding: 1.2rem 1.2rem;
+                margin-top: 4.5rem;
+                margin-bottom: 1.25rem;
+              }
+              .auth-kicker {
+                display: inline-block;
+                font-size: 0.78rem;
+                color: #bcd8ff;
+                border: 1px solid rgba(147, 197, 253, 0.35);
+                border-radius: 999px;
+                padding: 0.20rem 0.55rem;
+                background: rgba(59,130,246,0.16);
+                margin-bottom: 0.5rem;
+              }
+              .auth-subtle {
+                color: #c8d1de;
+              }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        _, auth_center, _ = st.columns([1.05, 1.1, 1.05], gap="small")
+        with auth_center:
+            st.markdown(
+                """
+                <div class="auth-page-shell">
+                  <div class="auth-kicker">Private Workspace Access</div>
+                  <h2 style="margin: 0.2rem 0 0.55rem 0;">Login</h2>
+                  <p class="auth-subtle" style="margin: 0 0 0.8rem 0;">
+                    Authentication is required before using Study Pal.
+                  </p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.error(
+                "Supabase auth is not configured. Set SUPABASE_URL and SUPABASE_PUBLIC_KEY to enable login."
+            )
+        return False
 
     def _first_query_param(name: str) -> str:
         """Read a Streamlit query param as a single normalized string."""
@@ -180,11 +409,14 @@ def _render_auth_panel() -> bool:
             elif callback_user:
                 callback_email = str(callback_user.get("email") or "").strip()
                 callback_user_id = str(callback_user.get("id") or callback_email).strip().lower()
+                _clear_user_openrouter_key_state()  # Avoid carrying stale key state across user switches.
                 st.session_state.user_email = callback_email or None
                 st.session_state.user_id = callback_user_id or None
                 st.session_state.auth_email = ""
                 st.session_state.auth_code_sent = False
                 st.session_state.auth_error = None
+                st.session_state.show_openrouter_setup_prompt = True
+                st.session_state.dismiss_openrouter_key_banner = False
                 log_langfuse_event(
                     "auth_callback_success",
                     session_id=st.session_state.session_id,
@@ -207,6 +439,9 @@ def _render_auth_panel() -> bool:
                 st.session_state.auth_email = ""
                 st.session_state.auth_code_sent = False
                 st.session_state.auth_error = None
+                st.session_state.show_openrouter_setup_prompt = False
+                st.session_state.dismiss_openrouter_key_banner = False
+                _clear_user_openrouter_key_state()
                 st.rerun()
         return True
 
@@ -1735,8 +1970,12 @@ def main() -> None:
     initialize_session_state()
     if not _render_auth_panel():
         return
+    _load_user_openrouter_key_into_session()
     ensure_current_mode("ask")
-    page = st.sidebar.radio("Page", options=["Study Workspace", "Feedback Admin"])
+    page = st.sidebar.radio("Page", options=["Study Workspace", "Feedback Admin", "Settings"])
+    if page == "Settings":
+        render_settings_page()
+        return
     if not st.session_state.document_library:
         document_library, active_document_id = restore_document_library(
             user_id=st.session_state.user_id
@@ -1785,6 +2024,19 @@ def main() -> None:
     if page == "Feedback Admin":
         render_feedback_admin()
         return
+
+    showed_post_login_prompt = False
+    if st.session_state.show_openrouter_setup_prompt and not st.session_state.user_openrouter_api_key:
+        _render_dismissible_openrouter_banner(
+            "Navigate to Settings and set your OpenRouter key before starting a study session."
+        )
+        st.session_state.show_openrouter_setup_prompt = False
+        showed_post_login_prompt = True
+
+    if not showed_post_login_prompt and not get_effective_openrouter_api_key():
+        _render_dismissible_openrouter_banner(
+            "No active OpenRouter key found. Open Settings to save your personal key and enable model-powered responses."
+        )
 
     if st.session_state.active_document_id and st.session_state.uploaded_sources:
         render_document_workspace_header()
