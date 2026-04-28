@@ -303,7 +303,7 @@ def _render_auth_panel() -> bool:
 
     if not supabase_enabled():
         with st.sidebar:
-            st.markdown("### Authentication")
+            st.markdown("### StudyPal")
             st.caption("Sign-in is required to continue.")
 
         st.markdown(
@@ -316,16 +316,6 @@ def _render_auth_panel() -> bool:
                 padding: 1.2rem 1.2rem;
                 margin-top: 4.5rem;
                 margin-bottom: 1.25rem;
-              }
-              .auth-kicker {
-                display: inline-block;
-                font-size: 0.78rem;
-                color: #bcd8ff;
-                border: 1px solid rgba(147, 197, 253, 0.35);
-                border-radius: 999px;
-                padding: 0.20rem 0.55rem;
-                background: rgba(59,130,246,0.16);
-                margin-bottom: 0.5rem;
               }
               .auth-subtle {
                 color: #c8d1de;
@@ -340,10 +330,9 @@ def _render_auth_panel() -> bool:
             st.markdown(
                 """
                 <div class="auth-page-shell">
-                  <div class="auth-kicker">Private Workspace Access</div>
-                  <h2 style="margin: 0.2rem 0 0.55rem 0;">Login</h2>
+                  <h2 style="margin: 0 0 0.55rem 0;">Login</h2>
                   <p class="auth-subtle" style="margin: 0 0 0.8rem 0;">
-                    Authentication is required before using Study Pal.
+                    Sign in with magic link.
                   </p>
                 </div>
                 """,
@@ -446,7 +435,7 @@ def _render_auth_panel() -> bool:
         return True
 
     with st.sidebar:
-        st.markdown("### Authentication")
+        st.markdown("### StudyPal")
         st.caption("Sign in on the main panel to continue.")
 
     st.markdown(
@@ -459,16 +448,6 @@ def _render_auth_panel() -> bool:
             padding: 1.2rem 1.2rem;
             margin-top: 4.5rem;
             margin-bottom: 1.25rem;
-          }
-          .auth-kicker {
-            display: inline-block;
-            font-size: 0.78rem;
-            color: #bcd8ff;
-            border: 1px solid rgba(147, 197, 253, 0.35);
-            border-radius: 999px;
-            padding: 0.20rem 0.55rem;
-            background: rgba(59,130,246,0.16);
-            margin-bottom: 0.5rem;
           }
           .auth-subtle {
             color: #c8d1de;
@@ -483,10 +462,9 @@ def _render_auth_panel() -> bool:
         st.markdown(
             """
             <div class="auth-page-shell">
-              <div class="auth-kicker">Private Workspace Access</div>
-              <h2 style="margin: 0.2rem 0 0.55rem 0;">Welcome Back</h2>
+              <h2 style="margin: 0 0 0.55rem 0;">Welcome Back</h2>
               <p class="auth-subtle" style="margin: 0 0 0.8rem 0;">
-                Sign in with your email magic link to access your saved study library and feedback history.
+                Sign in with magic link.
               </p>
             </div>
             """,
