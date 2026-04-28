@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from email.message import Message
 from io import BytesIO
 from urllib.error import HTTPError, URLError
+
+import pytest
 
 import src.auth.user_openrouter_keys as key_store
 
@@ -28,13 +31,14 @@ def test_validate_openrouter_api_key_rejects_wrong_prefix() -> None:
     assert error == "OpenRouter keys should start with 'sk-or-v1-'."
 
 
-def test_validate_openrouter_api_key_rejects_unauthorized(monkeypatch: object) -> None:
+def test_validate_openrouter_api_key_rejects_unauthorized(monkeypatch: pytest.MonkeyPatch) -> None:
     def _raise_unauthorized(*args: object, **kwargs: object) -> None:
+        headers: Message[str, str] = Message()
         raise HTTPError(
             url="https://openrouter.ai/api/v1/models",
             code=401,
             msg="Unauthorized",
-            hdrs=None,
+            hdrs=headers,
             fp=BytesIO(b"unauthorized"),
         )
 
@@ -46,7 +50,7 @@ def test_validate_openrouter_api_key_rejects_unauthorized(monkeypatch: object) -
     assert error == "OpenRouter rejected this key. Please double-check and try again."
 
 
-def test_validate_openrouter_api_key_handles_network_failure(monkeypatch: object) -> None:
+def test_validate_openrouter_api_key_handles_network_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     def _raise_network_error(*args: object, **kwargs: object) -> None:
         raise URLError("network down")
 
@@ -58,7 +62,7 @@ def test_validate_openrouter_api_key_handles_network_failure(monkeypatch: object
     assert error == "Could not reach OpenRouter to validate the key. Try again in a moment."
 
 
-def test_save_user_openrouter_key_stops_when_validation_fails(monkeypatch: object) -> None:
+def test_save_user_openrouter_key_stops_when_validation_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(key_store, "_storage_enabled", lambda: (True, None))
     monkeypatch.setattr(
         key_store,
@@ -77,7 +81,7 @@ def test_save_user_openrouter_key_stops_when_validation_fails(monkeypatch: objec
     assert error == "OpenRouter rejected this key."
 
 
-def test_validate_openrouter_api_key_accepts_200(monkeypatch: object) -> None:
+def test_validate_openrouter_api_key_accepts_200(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(key_store, "urlopen", lambda *args, **kwargs: _DummyResponse(status=200))
 
     ok, error = key_store.validate_openrouter_api_key("sk-or-v1-real-looking-key")
