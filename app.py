@@ -250,8 +250,8 @@ def render_settings_page() -> None:
     )
     if storage_ready:
         st.caption("Your key is encrypted before being stored in the database.")
-    elif storage_error:
-        st.caption(storage_error)
+    else:
+        st.info("Personal key storage is unavailable in this environment right now.")
 
     saved_key_hint = cast(str | None, st.session_state.user_openrouter_key_hint)
     saved_key_updated_at = cast(str | None, st.session_state.user_openrouter_key_updated_at)
@@ -274,7 +274,7 @@ def render_settings_page() -> None:
         placeholder="sk-or-v1-...",
     ).strip()
 
-    save_disabled = not new_key
+    save_disabled = (not storage_ready) or (not new_key)
     if st.button("Save key", key="settings_save_openrouter_key", disabled=save_disabled):
         ok, error = save_user_openrouter_key(cast(str, st.session_state.user_id), new_key)
         if ok:
