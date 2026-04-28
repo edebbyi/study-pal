@@ -55,6 +55,7 @@ def _initialize_fake_session_state(monkeypatch) -> SessionState:
     monkeypatch.setattr(app.st, "rerun", lambda: None)
     monkeypatch.setattr(app_state_module.st, "session_state", state, raising=False)
     monkeypatch.setattr(app_state_module.st, "success", lambda *args, **kwargs: None)
+    monkeypatch.setattr(app, "_render_auth_panel", lambda: True)
     app_state_module.initialize_session_state()
     # Keep auth gate open during flow tests.
     state.user_id = "test-user"
