@@ -73,7 +73,7 @@ class FakeIndex:
             }
         )
 
-    def query(self, vector: list[float], top_k: int, include_metadata: bool, filter: dict):
+    def query(self, vector: builtins.list[float], top_k: int, include_metadata: bool, filter: dict):
         class _Match:
             def __init__(self) -> None:
                 self.score = 0.91
