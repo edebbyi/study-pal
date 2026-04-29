@@ -88,16 +88,19 @@ def get_pinecone_index():
         return None
 
 
-def upsert_remote_chunks(chunks: list[Chunk], vectors: list[EmbeddingVector]) -> None:
+def upsert_remote_chunks(chunks: list[Chunk], vectors: list[EmbeddingVector]) -> bool:
     """Store chunk embeddings in the remote vector index.
 
     Args:
         chunks (list[Chunk]): Chunks to upsert.
         vectors (list[EmbeddingVector]): Embeddings for each chunk.
+
+    Returns:
+        bool: True when Pinecone upsert succeeds.
     """
     index = get_pinecone_index()
     if index is None or not chunks:
-        return
+        return False
 
     payload = []
     for chunk, vector_payload in zip(chunks, vectors, strict=False):
@@ -125,8 +128,9 @@ def upsert_remote_chunks(chunks: list[Chunk], vectors: list[EmbeddingVector]) ->
 
     try:
         index.upsert(vectors=payload)
+        return True
     except (PineconeApiException, PineconeConfigurationError, PineconeProtocolError):
-        return
+        return False
 
 
 def query_remote_chunks(
@@ -165,11 +169,11 @@ def query_remote_chunks(
         return _normalize_matches(response.matches)
 
     if document_id:
+        # Multi-tenant safety: never query a document-scoped remote index without user scope.
+        if not user_id:
+            return []
         filter_payload: dict[str, object] = {"document_id": {"$eq": document_id}}
-        if user_id:
-            filter_payload = {"$and": [filter_payload, {"user_id": {"$eq": user_id}}]}
-        if session_id:
-            filter_payload = {"$and": [filter_payload, {"session_id": {"$eq": session_id}}]}
+        filter_payload = {"$and": [filter_payload, {"user_id": {"$eq": user_id}}]}
         return _run_query(filter_payload)
 
     if session_id:

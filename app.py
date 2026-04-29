@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-import html
 from typing import cast
 
 import streamlit as st
@@ -160,70 +159,35 @@ def _render_dismissible_openrouter_banner(message: str) -> None:
     Args:
         message (str): Banner message text.
     """
-    dismiss_query = str(st.query_params.get("dismiss_openrouter_banner", "")).strip().lower()
-    if dismiss_query in {"1", "true", "yes"}:
-        st.session_state.dismiss_openrouter_key_banner = True
-        try:
-            del st.query_params["dismiss_openrouter_banner"]
-        except Exception:
-            pass
-
-    if st.session_state.dismiss_openrouter_key_banner:
-        return
-
-    safe_message = html.escape(message)
     st.markdown(
-        f"""
+        """
         <style>
-          .openrouter-banner {{
-            position: relative;
+          .st-key-openrouter_banner_container {
             background: linear-gradient(135deg, rgba(31, 56, 95, 0.82), rgba(22, 40, 70, 0.82));
             border: 1px solid rgba(104, 147, 220, 0.34);
             border-radius: 0.80rem;
-            padding: 1.15rem 2.35rem 1.15rem 1.15rem;
+            padding: 0.94rem 1.15rem;
             margin: 0 0 0.8rem 0;
-          }}
-          .openrouter-banner-message {{
+            min-height: 3.35rem;
+            display: flex;
+            align-items: center;
+          }
+          .st-key-openrouter_banner_container .openrouter-banner-message-content {
             color: #d8e7ff;
             font-size: 1.05rem;
             line-height: 1.35;
             font-weight: 520;
-          }}
-          .openrouter-banner-dismiss-form {{
-            position: absolute;
-            top: 0.48rem;
-            right: 0.60rem;
             margin: 0;
-          }}
-          .openrouter-banner-dismiss {{
-            min-height: 1.45rem;
-            height: 1.45rem;
-            min-width: 1.45rem;
-            width: 1.45rem;
-            border: none;
-            background: transparent;
-            color: rgba(216, 231, 255, 0.85);
-            font-size: 1.15rem;
-            line-height: 1;
-            padding: 0;
-            border-radius: 0.28rem;
-            cursor: pointer;
-          }}
-          .openrouter-banner-dismiss:hover {{
-            color: #ffffff;
-            background: rgba(255, 255, 255, 0.10);
-          }}
+          }
         </style>
-        <div class="openrouter-banner">
-          <form method="get" class="openrouter-banner-dismiss-form">
-            <input type="hidden" name="dismiss_openrouter_banner" value="1" />
-            <button type="submit" class="openrouter-banner-dismiss" aria-label="Dismiss">×</button>
-          </form>
-          <div class="openrouter-banner-message">{safe_message}</div>
-        </div>
         """,
         unsafe_allow_html=True,
     )
+    with st.container(key="openrouter_banner_container", border=False):
+        st.markdown(
+            f'<div class="openrouter-banner-message-content">{message}</div>',
+            unsafe_allow_html=True,
+        )
 
 
 def render_settings_page() -> None:
@@ -280,7 +244,6 @@ def render_settings_page() -> None:
         if ok:
             _load_user_openrouter_key_into_session(force=True)
             st.session_state.clear_settings_openrouter_key_input = True
-            st.session_state.dismiss_openrouter_key_banner = True
             st.rerun()
         else:
             st.error(error or "Unable to save your OpenRouter key.")
@@ -405,7 +368,6 @@ def _render_auth_panel() -> bool:
                 st.session_state.auth_code_sent = False
                 st.session_state.auth_error = None
                 st.session_state.show_openrouter_setup_prompt = True
-                st.session_state.dismiss_openrouter_key_banner = False
                 log_langfuse_event(
                     "auth_callback_success",
                     session_id=st.session_state.session_id,
@@ -429,7 +391,6 @@ def _render_auth_panel() -> bool:
                 st.session_state.auth_code_sent = False
                 st.session_state.auth_error = None
                 st.session_state.show_openrouter_setup_prompt = False
-                st.session_state.dismiss_openrouter_key_banner = False
                 _clear_user_openrouter_key_state()
                 st.rerun()
         return True
@@ -635,8 +596,18 @@ def _coerce_chunks(raw_chunks: list[object]) -> list[Chunk]:
     for chunk in raw_chunks:
         if isinstance(chunk, Chunk):
             normalized.append(chunk)
-        else:
+            continue
+        if isinstance(chunk, dict):
             normalized.append(Chunk.model_validate(chunk))
+            continue
+        model_dump = getattr(chunk, "model_dump", None)
+        if callable(model_dump):
+            try:
+                normalized.append(Chunk.model_validate(model_dump()))
+                continue
+            except Exception:
+                continue
+        normalized.append(Chunk.model_validate(chunk))
     return normalized
 
 
@@ -663,8 +634,7 @@ def _reindex_workspace(workspace: dict[str, object]) -> bool:
         st.error("Reindexing failed. Embeddings were not generated for every chunk.")
         return False
 
-    upsert_remote_chunks(chunks, remote_embeddings)
-    return True
+    return upsert_remote_chunks(chunks, remote_embeddings)
 
 
 
@@ -886,6 +856,8 @@ def render_message_feedback_form(message: dict[str, object]) -> None:
     message_id = message.get("id")
     if not isinstance(message_id, str):
         return
+    if bool(message.get("used_fallback")):
+        return
 
     existing_feedback = st.session_state.message_feedback.get(message_id)
     if existing_feedback is not None:
@@ -981,6 +953,7 @@ def _handle_question(question: str) -> None:
         trace_id=structured.trace_id,
         observation_id=structured.observation_id,
         topic_subject=structured.topic_subject,
+        used_fallback=structured.used_fallback,
     )
     st.session_state.conversation_topic = conversation_topic
     persist_document_library(
