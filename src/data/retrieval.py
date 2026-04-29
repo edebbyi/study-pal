@@ -341,6 +341,10 @@ def _local_retrieval(
         document_chunks = [chunk for chunk in chunks if chunk.document_id == document_id]
         if document_chunks:
             session_chunks = document_chunks  # prefer active document to avoid cross-doc bleed
+    if not session_chunks and chunks:
+        # Legacy safety: if session/document metadata drift, fall back to the currently loaded
+        # in-memory workspace chunk list instead of returning an empty retrieval set.
+        session_chunks = chunks
     scored = [
         (chunk, _cosine_similarity(query_tokens, _tokenize(chunk.text)))
         for chunk in session_chunks

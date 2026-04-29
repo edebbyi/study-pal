@@ -35,3 +35,42 @@ def test_retrieve_chunks_returns_best_match_for_session() -> None:
 
     assert len(results) == 1
     assert results[0].citation == "bio.txt, page 1"
+
+
+def test_retrieve_chunks_falls_back_to_loaded_chunks_when_session_and_document_metadata_drift() -> None:
+    """Local retrieval should still work when metadata no longer matches current session/document."""
+
+    chunks = [
+        Chunk(
+            id="a",
+            text="Brain states include wakefulness and different sleep stages.",
+            filename="neuro.txt",
+            page=3,
+            chunk_id=0,
+            session_id="legacy-session",
+            citation="neuro.txt, page 3",
+            source_type="txt",
+            document_id=None,
+        ),
+        Chunk(
+            id="b",
+            text="The medulla helps regulate breathing and heart rate.",
+            filename="neuro.txt",
+            page=4,
+            chunk_id=1,
+            session_id="legacy-session",
+            citation="neuro.txt, page 4",
+            source_type="txt",
+            document_id=None,
+        ),
+    ]
+
+    results = retrieve_chunks(
+        "what are brain states?",
+        chunks,
+        session_id="current-session",
+        document_id="current-document",
+    )
+
+    assert results
+    assert any("brain states" in chunk.text.lower() for chunk in results)

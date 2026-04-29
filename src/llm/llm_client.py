@@ -723,9 +723,10 @@ def generate_structured_answer(
         StructuredAnswer: Result value.
     """
 
-    if not retrieved_chunks:
+    chat_client = _get_chat_client()
+    if chat_client is None:
         return StructuredAnswer(
-            answer="I couldn't find that in the notes yet.",
+            answer="Navigate to Settings and enter you OpenRouter key for chat usage.",
             citations=[],
             info_lane=InfoLane(
                 button_label="🧠 Share more notes",
@@ -734,9 +735,7 @@ def generate_structured_answer(
             quiz_lane=QuizLane(button_label="Test your knowledge on this"),
             used_fallback=True,
         )
-
-    chat_client = _get_chat_client()
-    if chat_client is None:
+    if not retrieved_chunks:
         return StructuredAnswer(
             answer="I couldn't find that in the notes yet.",
             citations=[],

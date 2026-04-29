@@ -379,6 +379,16 @@ def build_structured_answer_response(question: str) -> StructuredAnswer:
         document_id=st.session_state.active_document_id,
         user_id=st.session_state.user_id,
     )
+    if not retrieved_chunks and st.session_state.chunks:
+        # Safety net: if scoped retrieval returns nothing, retry against the currently
+        # loaded workspace chunks to avoid false "not found" responses.
+        retrieved_chunks = retrieve_chunks(
+            question=retrieval_query,
+            chunks=st.session_state.chunks,
+            session_id="",
+            document_id=None,
+            user_id=None,
+        )
     example = (
         "Example:\n"
         "Context:\n"

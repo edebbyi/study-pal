@@ -43,9 +43,18 @@ def index_uploaded_file(uploaded_file) -> IndexedDocument:
     embeddings = embed_texts([chunk.text for chunk in chunks])
     remote_embeddings = [embedding for embedding in embeddings if is_embedding_vector(embedding)]
 
+    remote_sync_success = False
     # Only push to Pinecone when every chunk has a real vector payload.
     if len(remote_embeddings) == len(chunks):  # Only upsert when every chunk has a real vector.
-        upsert_remote_chunks(chunks, remote_embeddings)
+        remote_sync_success = upsert_remote_chunks(chunks, remote_embeddings)
+    if len(remote_embeddings) != len(chunks):
+        st.warning(
+            "Indexed locally, but Pinecone sync was skipped because embeddings were unavailable."
+        )
+    elif not remote_sync_success:
+        st.warning(
+            "Indexed locally, but Pinecone sync failed. Use 'Reindex to Pinecone' to retry."
+        )
 
     return IndexedDocument(
         document_id=document_id,

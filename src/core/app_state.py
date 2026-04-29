@@ -59,9 +59,17 @@ def _as_chunk_list(value: object) -> list[Chunk]:
     for item in value:
         if isinstance(item, Chunk):
             chunks.append(item)
-        elif isinstance(item, dict):
+            continue
+        if isinstance(item, dict):
             try:
                 chunks.append(Chunk.model_validate(item))
+            except Exception:
+                continue
+            continue
+        model_dump = getattr(item, "model_dump", None)
+        if callable(model_dump):
+            try:
+                chunks.append(Chunk.model_validate(model_dump()))
             except Exception:
                 continue
     return chunks
@@ -98,7 +106,6 @@ class SessionStateDefaults:
     auth_code_sent: bool = False
     auth_error: str | None = None
     show_openrouter_setup_prompt: bool = False
-    dismiss_openrouter_key_banner: bool = False
     user_openrouter_api_key: str | None = None
     user_openrouter_key_hint: str | None = None
     user_openrouter_key_updated_at: str | None = None
@@ -366,6 +373,7 @@ def store_message(
     trace_id: str | None = None,
     observation_id: str | None = None,
     topic_subject: str | None = None,
+    used_fallback: bool | None = None,
 ) -> None:
     """Append a user or assistant message to the conversation history.
 
@@ -381,6 +389,7 @@ def store_message(
         trace_id (str | None): Langfuse trace identifier.
         observation_id (str | None): Langfuse observation identifier.
         topic_subject (str | None): Quiz topic subject.
+        used_fallback (bool | None): Whether the answer used fallback logic.
     """
     message: dict[str, object] = {"role": role, "content": content}
     if role == "assistant":  # Only assistants need persistent IDs for feedback tracking.
@@ -403,6 +412,8 @@ def store_message(
         message["observation_id"] = observation_id
     if topic_subject:
         message["topic_subject"] = topic_subject
+    if used_fallback is not None:
+        message["used_fallback"] = used_fallback
     st.session_state.messages.append(message)
     save_active_document_workspace()
 
