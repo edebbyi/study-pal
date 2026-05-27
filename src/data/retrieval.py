@@ -16,29 +16,6 @@ from src.data.vector_store import normalize_retrieved_chunks, query_remote_chunk
 
 
 
-def _is_definition_question(question: str) -> bool:
-    """Is definition question.
-    
-    Args:
-        question (str): The user question to answer.
-    
-    Returns:
-        bool: True when the check succeeds; otherwise False.
-    """
-
-    normalized = " ".join(question.strip().lower().split())
-    if not normalized:
-        return False
-    starters = (
-        "what is ",
-        "what are ",
-        "define ",
-        "definition of ",
-    )
-    return normalized.startswith(starters)
-
-
-
 def _normalize_token(token: str) -> str:
     """Normalize token.
     
@@ -199,6 +176,7 @@ def retrieve_chunks(
     user_id: str | None = None,
 
     top_k: int | None = None,
+    use_rerank: bool = True,
 ) -> list[RetrievedChunk]:
     """Retrieve the most relevant chunks for a question.
     
@@ -215,103 +193,83 @@ def retrieve_chunks(
     """
 
     top_k = top_k or settings.top_k
-    candidate_k = top_k
-    if settings.rerank_model:
-        candidate_k = max(top_k, settings.rerank_candidates)  # pull extra candidates so reranker can reshuffle
+    dense_candidate_k = top_k
+    rerank_enabled = use_rerank and bool(settings.rerank_model)
+    if rerank_enabled:
+        dense_candidate_k = max(top_k, settings.rerank_candidates)  # pull extra candidates so reranker can reshuffle
+    lexical_candidate_k = max(dense_candidate_k, top_k * 4)
+    merged_candidate_k = max(dense_candidate_k, lexical_candidate_k)
     query_embedding = embed_text(question)
-    wants_definition = _is_definition_question(question)
     query_label = _loggable_query(question)
-
-    # Prefer the remote vector index when we have a real embedding available.
+    remote_results: list[RetrievedChunk] = []
     if is_embedding_vector(query_embedding):
         remote_results = query_remote_chunks(
             query_embedding,
             session_id,
-            candidate_k,
+            dense_candidate_k,
             document_id=document_id,
             user_id=user_id,
         )
-        if remote_results and not wants_definition:
-            reranked = _rerank_chunks(question, remote_results, top_k)
-            if settings.rerank_model:
-                log_langfuse_event(
-                    "rerank",
-                    session_id=session_id,
-                    metadata={
-                        "model": settings.rerank_model,
-                        "candidates": len(remote_results),
-                        "top_n": top_k,
-                        "query": query_label,
-                        "document_id": document_id or "",
-                    },
-                )
-            log_langfuse_event(
-                "retrieval",
-                session_id=session_id,
-                metadata={
-                    "mode": "remote",
-                    "num_results": len(reranked),
-                    "top_k": top_k,
-                    "query": query_label,
-                    "document_id": document_id or "",
-                },
-            )
-            return reranked
-        if remote_results and wants_definition:
-            local_results = _local_retrieval(question, chunks, session_id, document_id, top_k)  # add lexical hits for definitions
-            merged = _merge_retrieval_results(remote_results, local_results, top_k)
-            reranked = _rerank_chunks(question, merged, top_k)
-            if settings.rerank_model:
-                log_langfuse_event(
-                    "rerank",
-                    session_id=session_id,
-                    metadata={
-                        "model": settings.rerank_model,
-                        "candidates": len(merged),
-                        "top_n": top_k,
-                        "query": query_label,
-                        "document_id": document_id or "",
-                    },
-                )
-            log_langfuse_event(
-                "retrieval",
-                session_id=session_id,
-                metadata={
-                    "mode": "remote+local",
-                    "num_results": len(reranked),
-                    "top_k": top_k,
-                    "query": query_label,
-                    "document_id": document_id or "",
-                },
-            )
-            return reranked
+    local_results = _local_retrieval(question, chunks, session_id, document_id, lexical_candidate_k)
 
-    normalized = _local_retrieval(question, chunks, session_id, document_id, top_k)
-    reranked = _rerank_chunks(question, normalized, top_k)
-    if settings.rerank_model:
+    if remote_results and local_results:
+        merged_candidates = _merge_retrieval_results(remote_results, local_results, merged_candidate_k)
+        retrieval_mode = "hybrid"
+    elif remote_results:
+        merged_candidates = remote_results[:merged_candidate_k]
+        retrieval_mode = "remote_only"
+    else:
+        merged_candidates = local_results[:merged_candidate_k]
+        retrieval_mode = "local_only"
+
+    if not merged_candidates:
+        log_langfuse_event(
+            "retrieval",
+            session_id=session_id,
+            metadata={
+                "mode": "empty",
+                "num_results": 0,
+                "top_k": top_k,
+                "query": query_label,
+                "document_id": document_id or "",
+                "dense_candidates": len(remote_results),
+                "lexical_candidates": len(local_results),
+                "merged_candidates": 0,
+            },
+        )
+        return []
+
+    if rerank_enabled:
+        final_results = _rerank_chunks(question, merged_candidates, top_k)
         log_langfuse_event(
             "rerank",
             session_id=session_id,
             metadata={
                 "model": settings.rerank_model,
-                "candidates": len(normalized),
+                "candidates": len(merged_candidates),
                 "top_n": top_k,
                 "query": query_label,
                 "document_id": document_id or "",
             },
         )
+    else:
+        final_results = merged_candidates[:top_k]
     log_langfuse_event(
         "retrieval",
         session_id=session_id,
         metadata={
-            "mode": "local",
-            "num_results": len(reranked),
+            "mode": retrieval_mode,
+            "num_results": len(final_results),
             "top_k": top_k,
             "query": query_label,
             "document_id": document_id or "",
+            "dense_candidates": len(remote_results),
+            "lexical_candidates": len(local_results),
+            "merged_candidates": len(merged_candidates),
+            "rerank_enabled": rerank_enabled,
         },
     )
-    return reranked
+    return final_results
 
 
 def _local_retrieval(

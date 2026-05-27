@@ -4,13 +4,34 @@ from __future__ import annotations
 
 from functools import lru_cache
 import re
+import socket
 from typing import Any, Mapping, cast
+from urllib.parse import urlparse
 
 from supabase import Client, create_client
 
 from src.core.config import settings
 
 _EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _supabase_host() -> str:
+    """Return the hostname portion of SUPABASE_URL, when parseable."""
+    parsed = urlparse(settings.supabase_url.strip())
+    return parsed.hostname or ""
+
+
+def _format_auth_error(exc: Exception) -> str:
+    """Normalize auth exceptions into user-actionable messages."""
+    message = str(exc).strip()
+    lowered = message.lower()
+    if isinstance(exc, socket.gaierror) or "nodename nor servname provided" in lowered:
+        host = _supabase_host() or settings.supabase_url.strip() or "<missing SUPABASE_URL>"
+        return (
+            f"Could not reach Supabase host '{host}'. "
+            "Check SUPABASE_URL, internet/DNS access, VPN/firewall settings, and that your Supabase project is active."
+        )
+    return message or "Unexpected authentication error."
 
 
 @lru_cache(maxsize=1)
@@ -66,7 +87,7 @@ def send_magic_link(email: str) -> tuple[bool, str | None]:
         cast(Any, client.auth).sign_in_with_otp(payload)
         return True, None
     except Exception as exc:  # pragma: no cover - depends on external API
-        return False, str(exc)
+        return False, _format_auth_error(exc)
 
 
 def complete_sign_in_from_callback(
@@ -136,4 +157,4 @@ def complete_sign_in_from_callback(
                 return user_payload, None, True
         return None, "Sign-in callback was handled but no user was returned.", True
     except Exception as exc:  # pragma: no cover - depends on external API
-        return None, str(exc), True
+        return None, _format_auth_error(exc), True

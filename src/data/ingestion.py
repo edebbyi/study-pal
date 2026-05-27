@@ -9,7 +9,7 @@ from pypdf import PdfReader
 
 from src.core.config import settings
 from src.core.models import Document, Page, SourceType
-from src.core.utils import clean_text
+from src.core.utils import clean_ocr_text
 
 
 
@@ -66,7 +66,8 @@ def extract_pdf(uploaded_file: BinaryIO) -> list[Page]:
     reader = PdfReader(uploaded_file)
     pages: list[Page] = []
     for index, page in enumerate(reader.pages, start=1):
-        pages.append(Page(page_number=index, text=clean_text(page.extract_text() or "")))
+        raw_text = page.extract_text() or ""
+        pages.append(Page(page_number=index, text=clean_ocr_text(raw_text)))
     return pages
 
 
@@ -87,7 +88,7 @@ def extract_text_file(uploaded_file: BinaryIO) -> list[Page]:
         text = raw.decode("utf-8", errors="ignore")  # ignore odd encodings instead of failing upload
     else:
         text = str(raw)
-    return [Page(page_number=1, text=clean_text(text))]
+    return [Page(page_number=1, text=clean_ocr_text(text))]
 
 
 

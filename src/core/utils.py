@@ -64,6 +64,36 @@ def clean_text(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def clean_ocr_text(text: str) -> str:
+    """Apply OCR/PDF cleanup heuristics before chunking.
+
+    This is intentionally conservative: it normalizes common OCR spacing
+    artifacts without attempting aggressive language reconstruction.
+    """
+    if not text:
+        return ""
+
+    cleaned = text.replace("\u00ad", "")  # soft hyphen
+    cleaned = cleaned.replace("\n", " ")
+    # Join words split by line-wrap hyphenation: "cyclo- ne" -> "cyclone".
+    cleaned = re.sub(r"([A-Za-z])-\s+([A-Za-z])", r"\1\2", cleaned)
+
+    # Add missing boundaries often seen in OCR.
+    cleaned = re.sub(r"([a-z])([A-Z])", r"\1 \2", cleaned)
+    cleaned = re.sub(r"([a-z])([.,;:!?])([A-Z])", r"\1\2 \3", cleaned)
+    cleaned = re.sub(r"([a-z])([0-9])", r"\1 \2", cleaned)
+    cleaned = re.sub(r"([0-9])([A-Za-z])", r"\1 \2", cleaned)
+    cleaned = re.sub(r"([a-z])([A-Z][a-z])", r"\1 \2", cleaned)
+
+    # Collapse long runs of single-letter OCR tokens: "T h e" -> "The".
+    cleaned = re.sub(
+        r"(?:\b[A-Za-z]\b\s+){4,}\b[A-Za-z]\b",
+        lambda match: "".join(re.findall(r"[A-Za-z]", match.group(0))),
+        cleaned,
+    )
+    return clean_text(cleaned)
+
+
 def humanize_label(text: str) -> str:
     """Make labels more readable for display.
 

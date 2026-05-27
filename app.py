@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import json
+import os
 from datetime import datetime, timezone
 from typing import cast
+from urllib.error import HTTPError, URLError
+from urllib.parse import quote
+from urllib.request import Request, urlopen
 
 import streamlit as st
 
@@ -58,6 +63,655 @@ from src.core.utils import humanize_label
 from src.data.embeddings import embed_texts, is_embedding_vector
 from src.data.vector_store import rebuild_document_library_from_remote, upsert_remote_chunks
 
+
+PUBLISHING_MARKETING_OUTPUT_TYPES = [
+    "back_cover",
+    "newsletter",
+    "bookstore_pitch",
+    "instagram_caption",
+    "tiktok_hooks",
+    "author_interview_questions",
+    "book_club_questions",
+]
+
+PUBLISHING_MARKETING_OUTPUT_LABELS = {
+    "back_cover": "Back-Cover Copy",
+    "newsletter": "Newsletter Blurb",
+    "bookstore_pitch": "Bookstore Pitch",
+    "instagram_caption": "Instagram Caption",
+    "tiktok_hooks": "TikTok Hooks",
+    "author_interview_questions": "Author Interview Questions",
+    "book_club_questions": "Book Club Questions",
+}
+
+
+def _marketing_output_label(output_type: str) -> str:
+    """Return a reader-friendly label for marketing output types."""
+    return PUBLISHING_MARKETING_OUTPUT_LABELS.get(output_type, humanize_label(output_type))
+
+
+def _word_count(text: str) -> int:
+    """Return a simple whitespace-based word count."""
+    return len([token for token in text.split() if token.strip()])
+
+
+def _publishing_api_base_url() -> str:
+    """Return backend API base URL used by Publishing Mode UI."""
+    configured = os.getenv("STUDYPAL_API_BASE_URL", "http://127.0.0.1:8000/api").strip()
+    return configured.rstrip("/")
+
+
+def _call_backend_post_json(
+    *,
+    path: str,
+    payload: dict[str, object],
+) -> tuple[dict[str, object] | None, str | None]:
+    """POST JSON to backend and parse JSON response with graceful errors."""
+    url = f"{_publishing_api_base_url()}{path}"
+    request_headers = {"Content-Type": "application/json"}
+    session_user_id = str(st.session_state.get("user_id") or "").strip() if "user_id" in st.session_state else ""
+    if session_user_id:
+        request_headers["X-User-Id"] = session_user_id
+    request = Request(
+        url=url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers=request_headers,
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=45) as response:
+            body = response.read().decode("utf-8")
+            if not body.strip():
+                return {}, None
+            parsed = json.loads(body)
+            if isinstance(parsed, dict):
+                return cast(dict[str, object], parsed), None
+            return None, "Backend returned an unexpected response format."
+    except HTTPError as error:
+        detail_message = f"Backend request failed with status {error.code}."
+        try:
+            raw_body = error.read().decode("utf-8")
+            if raw_body.strip():
+                parsed_error = json.loads(raw_body)
+                if isinstance(parsed_error, dict):
+                    detail = parsed_error.get("detail")
+                    if isinstance(detail, str) and detail.strip():
+                        detail_message = detail.strip()
+        except Exception:
+            pass
+        return None, detail_message
+    except URLError:
+        return (
+            None,
+            "Could not reach the FastAPI backend. Start it and verify STUDYPAL_API_BASE_URL.",
+        )
+    except TimeoutError:
+        return None, "Backend request timed out. Try again."
+    except json.JSONDecodeError:
+        return None, "Backend returned invalid JSON."
+
+
+def _path_with_user_id(path: str, user_id: str | None) -> str:
+    """Append `user_id` query parameter to backend path when available."""
+    cleaned_user_id = (user_id or "").strip()
+    if not cleaned_user_id:
+        return path
+    separator = "&" if "?" in path else "?"
+    return f"{path}{separator}user_id={quote(cleaned_user_id, safe='')}"
+
+
+def _init_publishing_ui_state() -> None:
+    """Initialize Publishing Mode UI session-state keys."""
+    st.session_state.setdefault("workspace_mode", "Study Mode")
+    st.session_state.setdefault("publishing_selected_doc_id", None)
+    st.session_state.setdefault("publishing_last_ask_response", None)
+    st.session_state.setdefault("publishing_last_book_brief_response", None)
+    st.session_state.setdefault("publishing_last_marketing_response", None)
+
+
+def _publishing_source_expander(sources: list[object], *, title: str = "Source chunks") -> None:
+    """Render returned source chunks in a readable expandable section."""
+    normalized_sources = [item for item in sources if isinstance(item, dict)]
+    if not normalized_sources:
+        st.caption("No source chunks returned.")
+        return
+    with st.expander(f"{title} ({len(normalized_sources)})", expanded=False):
+        for index, source in enumerate(normalized_sources, start=1):
+            chunk_id = str(source.get("chunk_id") or "unknown")
+            score = source.get("score")
+            header = f"{index}. chunk_id={chunk_id}"
+            if isinstance(score, (int, float)):
+                header += f" | score={float(score):.3f}"
+            st.markdown(header)
+            text = str(source.get("text") or "").strip()
+            st.caption(text if text else "(empty source text)")
+
+
+def _publishing_metadata_block(metadata: object) -> None:
+    """Render model/latency/retrieval metadata for a publishing response."""
+    if not isinstance(metadata, dict):
+        st.caption("No metadata returned.")
+        return
+    model = str(metadata.get("model") or "unknown")
+    latency = metadata.get("latency_ms")
+    retrieved = metadata.get("retrieved_chunk_count")
+    metric_columns = st.columns(3)
+    metric_columns[0].metric("Model", model)
+    metric_columns[1].metric("Latency (ms)", str(latency if latency is not None else "n/a"))
+    metric_columns[2].metric("Retrieved chunks", str(retrieved if retrieved is not None else "n/a"))
+    extra_cols = st.columns(2)
+    avg_rel = metadata.get("avg_relevance_score")
+    top_rel = metadata.get("top_relevance_score")
+    extra_cols[0].metric("Average relevance score", f"{float(avg_rel):.3f}" if isinstance(avg_rel, (int, float)) else "n/a")
+    extra_cols[1].metric("Top relevance score", f"{float(top_rel):.3f}" if isinstance(top_rel, (int, float)) else "n/a")
+    coverage = metadata.get("context_coverage_score")
+    if isinstance(coverage, (int, float)):
+        st.caption(f"Context coverage score: {float(coverage):.3f}")
+    phoenix_trace_id = metadata.get("phoenix_trace_id")
+    mlflow_run_id = metadata.get("mlflow_run_id")
+    if isinstance(phoenix_trace_id, str) and phoenix_trace_id.strip():
+        st.caption(f"Phoenix trace id: {phoenix_trace_id}")
+    if isinstance(mlflow_run_id, str) and mlflow_run_id.strip():
+        st.caption(f"MLflow run id: {mlflow_run_id}")
+    created_at = metadata.get("created_at")
+    if isinstance(created_at, str) and created_at.strip():
+        st.caption(f"Created at: {created_at}")
+
+
+def _publishing_run_details_block(response_payload: dict[str, object]) -> None:
+    """Render run details preferring explicit run_details payload."""
+    run_details = response_payload.get("run_details")
+    if isinstance(run_details, dict):
+        _publishing_metadata_block(run_details)
+        return
+    _publishing_metadata_block(response_payload.get("metadata"))
+
+
+def _render_workflow_trace_panel(trace_payload: object) -> None:
+    """Render observable processing steps without hidden model reasoning."""
+    with st.expander("Workflow Trace", expanded=False):
+        if isinstance(trace_payload, dict):
+            label_map = [
+                ("retrieved_chunk_count", "Retrieved chunk count"),
+                ("selected_output", "Selected output"),
+                ("grounding_check", "Grounding check"),
+                ("spoiler_setting", "Spoiler setting"),
+                ("missing_context_flags_present", "Missing context flags present"),
+                ("unsupported_claims_detected", "Unsupported claims detected"),
+                ("context_coverage_label", "Context coverage"),
+            ]
+            for key, label in label_map:
+                if key in trace_payload:
+                    st.markdown(f"- {label}: {trace_payload.get(key)}")
+            return
+        if isinstance(trace_payload, list):
+            steps = [str(item).strip() for item in trace_payload if str(item).strip()]
+            if steps:
+                for step in steps:
+                    st.markdown(f"- {step}")
+                return
+        st.caption("No workflow trace returned.")
+
+
+def _render_quality_checks_block(checks_payload: object) -> None:
+    """Render quality check fields for publishing outputs."""
+    st.markdown("#### Quality Checks")
+    if not isinstance(checks_payload, dict):
+        st.caption("No quality checks returned.")
+        return
+
+    def _bool_label(value: object) -> str:
+        if isinstance(value, bool):
+            return "yes" if value else "no"
+        if isinstance(value, str):
+            lowered = value.strip().lower()
+            if lowered in {"yes", "no", "unknown"}:
+                return lowered
+        return "unknown"
+
+    st.markdown(f"- Grounded in source: {_bool_label(checks_payload.get('grounded_in_source')).title()}")
+    st.markdown(
+        "- Unsupported claims detected: "
+        f"{_bool_label(checks_payload.get('unsupported_claims_detected')).title()}"
+    )
+    spoiler_level = str(checks_payload.get("spoiler_level") or "unknown").strip()
+    st.markdown(f"- Spoiler level: {spoiler_level.title() if spoiler_level else 'Unknown'}")
+    st.markdown(
+        f"- Missing context present: {_bool_label(checks_payload.get('missing_context_present')).title()}"
+    )
+    st.markdown(
+        "- Human review recommended: "
+        f"{_bool_label(checks_payload.get('human_review_recommended')).title()}"
+    )
+    context_coverage = str(checks_payload.get("context_coverage_label") or "").strip()
+    if context_coverage:
+        st.markdown(f"- Context coverage: {context_coverage.title()}")
+    coverage_score = checks_payload.get("context_coverage_score")
+    if isinstance(coverage_score, (int, float)):
+        st.markdown(f"- Context coverage score: {float(coverage_score):.3f}")
+
+
+def _format_brief_scalar(value: object, *, empty_fallback: str = "Insufficient evidence in retrieved context.") -> str:
+    """Normalize scalar brief values for display."""
+    if value is None:
+        return empty_fallback
+    text = str(value).strip()
+    if not text:
+        return empty_fallback
+    return text
+
+
+def _render_brief_list_section(title: str, values: object) -> None:
+    """Render a list-style section for the positioning brief."""
+    st.markdown(f"#### {title}")
+    if isinstance(values, list):
+        cleaned = [str(item).strip() for item in values if str(item).strip()]
+        if cleaned:
+            st.markdown("\n".join(f"- {item}" for item in cleaned))
+            return
+    st.caption("Insufficient evidence in retrieved context.")
+
+
+def _render_reader_buyer_persona_section(persona_payload: object) -> None:
+    """Render Reader / Buyer Persona Snapshot for positioning briefs."""
+    st.markdown("#### Reader / Buyer Persona Snapshot")
+    if not isinstance(persona_payload, dict):
+        st.caption("Insufficient evidence in retrieved context.")
+        return
+
+    field_map = [
+        ("Persona Name", "persona_name"),
+        ("Role / Context", "role_context"),
+        ("Motivation", "motivation"),
+        ("Needs", "needs"),
+        ("Likely Objections", "likely_objections"),
+        ("Discovery Channels", "discovery_channels"),
+        ("Messaging Notes", "messaging_notes"),
+    ]
+    for label, key in field_map:
+        st.markdown(f"**{label}**")
+        st.write(_format_brief_scalar(persona_payload.get(key)))
+
+
+def _render_positioning_brief(response_payload: dict[str, object]) -> None:
+    """Render a polished, reader-facing Book Positioning Brief view."""
+    st.markdown("### Book Positioning Brief")
+    st.caption("Strategic brief for editorial, marketing, and sales alignment. Use Marketing Copy for channel-specific drafts.")
+
+    st.markdown("#### Title")
+    st.write(_format_brief_scalar(response_payload.get("title")))
+
+    st.markdown("#### Category / Genre")
+    st.write(_format_brief_scalar(response_payload.get("genre")))
+
+    primary_audience = response_payload.get("primary_audience")
+    if primary_audience in (None, ""):
+        primary_audience = response_payload.get("target_reader")
+    st.markdown("#### Primary Audience")
+    st.write(_format_brief_scalar(primary_audience))
+
+    secondary_audience = _format_brief_scalar(
+        response_payload.get("secondary_audience"),
+        empty_fallback="Not specified from retrieved context.",
+    )
+    st.markdown("#### Secondary Audience")
+    st.write(secondary_audience)
+
+    persona_payload = response_payload.get("reader_buyer_persona")
+    if persona_payload in (None, ""):
+        persona_payload = response_payload.get("reader_persona")
+    _render_reader_buyer_persona_section(persona_payload)
+
+    one_sentence_positioning = response_payload.get("one_sentence_positioning")
+    if one_sentence_positioning in (None, ""):
+        one_sentence_positioning = response_payload.get("one_sentence_pitch")
+    st.markdown("#### One-Sentence Positioning")
+    st.write(_format_brief_scalar(one_sentence_positioning))
+
+    _render_brief_list_section("Core Themes", response_payload.get("core_themes"))
+    _render_brief_list_section("Audience Keywords", response_payload.get("audience_keywords"))
+
+    positioning_recommendation = response_payload.get("positioning_recommendation")
+    if positioning_recommendation in (None, ""):
+        positioning_recommendation = response_payload.get("back_cover_copy")
+    st.markdown("#### Positioning Recommendation")
+    st.write(_format_brief_scalar(positioning_recommendation))
+
+    _render_brief_list_section("Supported Positioning Angles", response_payload.get("marketing_angles"))
+
+    sales_use_case = response_payload.get("sales_use_case")
+    if sales_use_case in (None, ""):
+        sales_use_case = response_payload.get("sales_positioning")
+    st.markdown("#### Sales Use Case")
+    st.write(_format_brief_scalar(sales_use_case))
+
+    risk_flags = response_payload.get("risk_flags")
+    if risk_flags in (None, "", []):
+        risk_flags = response_payload.get("content_warnings")
+    _render_brief_list_section("Risk Flags / Missing Context", risk_flags)
+
+
+def _workspace_label(workspace: dict[str, object]) -> str:
+    """Build a concise document label for selection controls."""
+    title = str(workspace.get("document_title") or "").strip()
+    filename = str(workspace.get("filename") or "").strip()
+    if title and filename:
+        return f"{title} ({filename})"
+    return title or filename or "Untitled document"
+
+
+def _render_publishing_run_feedback(
+    *,
+    response_payload: dict[str, object],
+    section_key: str,
+) -> None:
+    """Render lightweight run feedback controls for one publishing response."""
+    metadata = response_payload.get("metadata")
+    if not isinstance(metadata, dict):
+        return
+    run_id = str(metadata.get("run_id") or "").strip()
+    if not run_id:
+        st.caption("Run id unavailable for feedback.")
+        return
+
+    with st.expander("Rate this output", expanded=False):
+        with st.form(f"publishing_run_feedback_form_{section_key}_{run_id}"):
+            rating_option = st.selectbox(
+                "Rating",
+                options=["Select rating", "1", "2", "3", "4", "5"],
+                index=0,
+                help="1 = poor quality, 5 = excellent quality.",
+            )
+            thumbs_option = st.selectbox(
+                "Thumbs",
+                options=["Select", "up", "down"],
+                index=0,
+            )
+            useful_toggle = st.checkbox("Useful", value=True)
+            grounded_toggle = st.checkbox("Grounded", value=True)
+            feedback_notes = st.text_area(
+                "Notes (optional)",
+                placeholder="What worked, what felt off, or how to improve this output.",
+            ).strip()
+            submitted = st.form_submit_button("Save feedback")
+
+        if submitted:
+            payload: dict[str, object] = {}
+            if rating_option != "Select rating":
+                payload["rating"] = int(rating_option)
+            if thumbs_option != "Select":
+                payload["thumbs"] = thumbs_option
+            payload["useful"] = useful_toggle
+            payload["grounded"] = grounded_toggle
+            if feedback_notes:
+                payload["notes"] = feedback_notes
+            if not any(key in payload for key in ("rating", "thumbs", "notes")):
+                st.warning("Select a rating or add notes before submitting.")
+                return
+
+            saved, error = _call_backend_post_json(
+                path=f"/runs/{run_id}/feedback",
+                payload=payload,
+            )
+            if error:
+                st.error(error)
+                return
+            if not isinstance(saved, dict):
+                st.error("Backend did not return a saved feedback record.")
+                return
+            saved_rating = saved.get("user_rating")
+            saved_feedback = saved.get("user_feedback")
+            if saved_rating is not None:
+                st.caption(f"Saved rating: {saved_rating}/5")
+            if isinstance(saved_feedback, str) and saved_feedback.strip():
+                st.caption(f"Saved notes: {saved_feedback}")
+            st.success("Feedback saved.")
+
+
+def _render_publishing_mode() -> None:
+    """Render Publishing Mode tools using backend endpoints."""
+    st.markdown("## Publishing Mode")
+    st.caption("Internal workflow for editorial, marketing, sales, and research outputs.")
+
+    document_library = cast(list[dict[str, object]], st.session_state.document_library)
+    if not document_library:
+        st.warning(
+            "No indexed documents found. Upload documents in Study Mode first, then return to Publishing Mode."
+        )
+        return
+
+    document_ids = [str(workspace.get("document_id") or "") for workspace in document_library]
+    document_ids = [doc_id for doc_id in document_ids if doc_id]
+    if not document_ids:
+        st.warning("No valid document identifiers found in the current library.")
+        return
+
+    preferred_doc_id = cast(str | None, st.session_state.publishing_selected_doc_id)
+    if preferred_doc_id not in document_ids:
+        active_doc_id = cast(str | None, st.session_state.active_document_id)
+        if active_doc_id in document_ids:
+            st.session_state.publishing_selected_doc_id = active_doc_id
+        else:
+            st.session_state.publishing_selected_doc_id = document_ids[0]
+
+    label_by_doc_id = {
+        str(workspace["document_id"]): _workspace_label(workspace)
+        for workspace in document_library
+        if workspace.get("document_id")
+    }
+    selector_column, action_column = st.columns([5, 1])
+    with selector_column:
+        selected_doc_id = cast(
+            str,
+            st.selectbox(
+                "Select uploaded document",
+                options=document_ids,
+                key="publishing_selected_doc_id",
+                format_func=lambda doc_id: label_by_doc_id.get(doc_id, doc_id),
+            ),
+        )
+    with action_column:
+        st.markdown("<div style='height: 1.8rem;'></div>", unsafe_allow_html=True)
+        if st.button("Add to library", key="publishing_add_to_library"):
+            activate_document_workspace(selected_doc_id)
+            st.session_state.workspace_mode = "Study Mode"
+            selected_label = label_by_doc_id.get(selected_doc_id, selected_doc_id)
+            st.session_state.library_status_message = f"Opened {selected_label} from Publishing Mode."
+            persist_document_library(
+                st.session_state.document_library,
+                st.session_state.active_document_id,
+                user_id=st.session_state.user_id,
+            )
+            st.rerun()
+
+    ask_tab, book_brief_tab, marketing_tab = st.tabs(
+        ["Ask the Book", "Positioning Brief", "Marketing Copy"]
+    )
+
+    with ask_tab:
+        st.caption("Grounded Q&A over the selected document.")
+        with st.form("publishing_ask_form"):
+            ask_question = st.text_area(
+                "Question",
+                placeholder="What are the core themes and where are they supported in the text?",
+                key="publishing_ask_question",
+            ).strip()
+            ask_submitted = st.form_submit_button("Ask the Book")
+
+        if ask_submitted:
+            if not ask_question:
+                st.warning("Enter a question before submitting.")
+            else:
+                response, error = _call_backend_post_json(
+                    path=f"/documents/{selected_doc_id}/ask",
+                    payload={
+                        "question": ask_question,
+                        "user_id": cast(str | None, st.session_state.user_id),
+                    },
+                )
+                if error:
+                    st.error(error)
+                elif response is None:
+                    st.error("No response returned.")
+                else:
+                    st.session_state.publishing_last_ask_response = response
+
+        ask_response = st.session_state.publishing_last_ask_response
+        if isinstance(ask_response, dict):
+            st.markdown("### Grounded Answer")
+            st.write(str(ask_response.get("answer") or "No answer returned."))
+            warning = ask_response.get("metadata", {}).get("warning") if isinstance(ask_response.get("metadata"), dict) else None
+            if isinstance(warning, str) and warning.strip():
+                st.warning(warning)
+            _render_workflow_trace_panel(ask_response.get("workflow_trace"))
+            _render_quality_checks_block(ask_response.get("quality_checks"))
+            _publishing_source_expander(
+                cast(list[object], ask_response.get("sources", [])),
+                title="Evidence Used",
+            )
+            st.markdown("#### Run Details")
+            _publishing_run_details_block(ask_response)
+
+    with book_brief_tab:
+        st.caption("Generate a source-grounded positioning brief for editorial, marketing, and sales alignment.")
+        with st.form("publishing_book_brief_form"):
+            brief_audience = st.text_input(
+                "Audience (optional)",
+                placeholder="Book club readers, YA fantasy readers, etc.",
+            ).strip()
+            brief_spoiler = st.selectbox(
+                "Spoiler level",
+                options=["low", "medium", "high"],
+                index=0,
+            )
+            brief_notes = st.text_area(
+                "Notes (optional)",
+                placeholder="Any packaging angles or constraints for this draft.",
+            ).strip()
+            brief_submitted = st.form_submit_button("Generate Positioning Brief")
+
+        if brief_submitted:
+            brief_payload: dict[str, object] = {}
+            if brief_audience:
+                brief_payload["audience"] = brief_audience
+            if brief_spoiler:
+                brief_payload["spoiler_level"] = brief_spoiler
+            if brief_notes:
+                brief_payload["notes"] = brief_notes
+            response, error = _call_backend_post_json(
+                path=_path_with_user_id(
+                    f"/publishing/{selected_doc_id}/book-brief",
+                    cast(str | None, st.session_state.user_id),
+                ),
+                payload=brief_payload,
+            )
+            if error:
+                st.error(error)
+            elif response is None:
+                st.error("No response returned.")
+            else:
+                st.session_state.publishing_last_book_brief_response = response
+
+        brief_response = st.session_state.publishing_last_book_brief_response
+        if isinstance(brief_response, dict):
+            _render_positioning_brief(brief_response)
+            _render_workflow_trace_panel(brief_response.get("workflow_trace"))
+            _render_quality_checks_block(brief_response.get("quality_checks"))
+            _publishing_source_expander(
+                cast(list[object], brief_response.get("sources", [])),
+                title="Evidence Used",
+            )
+            st.markdown("#### Run Details")
+            _publishing_run_details_block(brief_response)
+            _render_publishing_run_feedback(
+                response_payload=brief_response,
+                section_key="book_brief",
+            )
+
+    with marketing_tab:
+        st.caption("Generate channel-specific marketing assets grounded in source chunks.")
+        with st.form("publishing_marketing_form"):
+            marketing_output_type = st.selectbox(
+                "Output type",
+                options=PUBLISHING_MARKETING_OUTPUT_TYPES,
+                index=0,
+                format_func=_marketing_output_label,
+            )
+            marketing_tone = st.text_input("Tone (optional)", placeholder="Cinematic, warm, urgent, etc.").strip()
+            marketing_audience = st.text_input(
+                "Audience (optional)",
+                placeholder="Educators, librarians, students, science readers, booksellers...",
+            ).strip()
+            marketing_spoiler = st.selectbox(
+                "Spoiler level",
+                options=["low", "medium", "high"],
+                index=0,
+            )
+            marketing_length = st.text_input("Length guidance (optional)", placeholder="1 paragraph, 3 bullets, 120 words").strip()
+            marketing_notes = st.text_area("Notes (optional)", placeholder="Any campaign context or constraints.").strip()
+            marketing_submitted = st.form_submit_button("Generate Marketing Copy")
+
+        if marketing_submitted:
+            marketing_payload: dict[str, object] = {
+                "output_type": marketing_output_type,
+                "spoiler_level": marketing_spoiler,
+            }
+            if marketing_tone:
+                marketing_payload["tone"] = marketing_tone
+            if marketing_audience:
+                marketing_payload["audience"] = marketing_audience
+            if marketing_length:
+                marketing_payload["length"] = marketing_length
+            if marketing_notes:
+                marketing_payload["notes"] = marketing_notes
+            response, error = _call_backend_post_json(
+                path=_path_with_user_id(
+                    f"/publishing/{selected_doc_id}/marketing-copy",
+                    cast(str | None, st.session_state.user_id),
+                ),
+                payload=marketing_payload,
+            )
+            if error:
+                st.error(error)
+            elif response is None:
+                st.error("No response returned.")
+            else:
+                st.session_state.publishing_last_marketing_response = response
+
+        marketing_response = st.session_state.publishing_last_marketing_response
+        if isinstance(marketing_response, dict):
+            output_type = str(marketing_response.get("output_type") or "")
+            output_label = _marketing_output_label(output_type) if output_type else "Marketing Asset"
+            st.markdown(f"### {output_label} Draft")
+            copy_text = marketing_response.get("copy")
+            if not isinstance(copy_text, str):
+                copy_text = marketing_response.get("copy_text")
+            rendered_copy_text = str(copy_text or "No copy returned.")
+            st.write(rendered_copy_text)
+            if rendered_copy_text and rendered_copy_text != "No copy returned.":
+                st.caption(f"Approx. {_word_count(rendered_copy_text)} words")
+            rationale = marketing_response.get("rationale")
+            if isinstance(rationale, str) and rationale.strip():
+                cleaned_rationale = " ".join(rationale.split())
+                st.markdown("#### Rationale")
+                if len(cleaned_rationale) > 520:
+                    st.write(cleaned_rationale[:520].rstrip() + "...")
+                    with st.expander("Show full rationale", expanded=False):
+                        st.caption(cleaned_rationale)
+                else:
+                    st.write(cleaned_rationale)
+            _render_workflow_trace_panel(marketing_response.get("workflow_trace"))
+            _render_quality_checks_block(marketing_response.get("quality_checks"))
+            _publishing_source_expander(
+                cast(list[object], marketing_response.get("sources", [])),
+                title="Evidence Used",
+            )
+            st.markdown("#### Run Details")
+            _publishing_run_details_block(marketing_response)
+            _render_publishing_run_feedback(
+                response_payload=marketing_response,
+                section_key="marketing_copy",
+            )
 
 
 def _trim_text(text: str, limit: int = 220) -> str:
@@ -689,6 +1343,7 @@ def render_document_library() -> None:
                     f"#### {workspace.get('document_title') or workspace['filename']}"
                 )
                 st.caption(workspace["filename"])
+                st.caption(f"Doc ID: `{workspace['document_id']}`")
                 st.caption(
                     f"{workspace['chunk_count']} chunks | {workspace['size_mb']}MB"
                 )
@@ -1919,6 +2574,7 @@ def main() -> None:
 
     st.set_page_config(page_title=settings.app_title, page_icon="📚", layout="wide")
     initialize_session_state()
+    _init_publishing_ui_state()
     if not _render_auth_panel():
         return
     _load_user_openrouter_key_into_session()
@@ -1988,6 +2644,16 @@ def main() -> None:
         _render_dismissible_openrouter_banner(
             "No active OpenRouter key found. Open Settings to save your personal key and enable model-powered responses."
         )
+
+    selected_workspace_mode = st.radio(
+        "Workspace Mode",
+        options=["Study Mode", "Publishing Mode"],
+        horizontal=True,
+        key="workspace_mode",
+    )
+    if selected_workspace_mode == "Publishing Mode":
+        _render_publishing_mode()
+        return
 
     if st.session_state.active_document_id and st.session_state.uploaded_sources:
         render_document_workspace_header()

@@ -68,3 +68,35 @@ def test_effective_key_uses_global_key_without_authenticated_user(monkeypatch) -
     )
 
     assert credentials.get_effective_openrouter_api_key() == "sk-or-v1-global"
+
+
+def test_api_key_for_user_prefers_persisted_user_key(monkeypatch) -> None:
+    """Server-side resolver should prefer persisted per-user key."""
+    monkeypatch.setattr(
+        credentials,
+        "settings",
+        SimpleNamespace(openrouter_api_key="sk-or-v1-global", openrouter_allow_global_fallback=False),
+    )
+    monkeypatch.setattr(
+        credentials,
+        "load_user_openrouter_key",
+        lambda user_id: (SimpleNamespace(api_key="sk-or-v1-user-db"), None),
+    )
+
+    assert credentials.get_openrouter_api_key_for_user("learner-1") == "sk-or-v1-user-db"
+
+
+def test_api_key_for_user_blocks_global_when_user_missing_key(monkeypatch) -> None:
+    """Server-side resolver returns empty when no user key and fallback disabled."""
+    monkeypatch.setattr(
+        credentials,
+        "settings",
+        SimpleNamespace(openrouter_api_key="sk-or-v1-global", openrouter_allow_global_fallback=False),
+    )
+    monkeypatch.setattr(
+        credentials,
+        "load_user_openrouter_key",
+        lambda user_id: (None, None),
+    )
+
+    assert credentials.get_openrouter_api_key_for_user("learner-1") == ""

@@ -104,7 +104,13 @@ def _resolve_prompt(
 
 
 
-def build_answer_prompt(context: str, question: str) -> PromptBundle:
+def build_answer_prompt(
+    context: str,
+    question: str,
+    *,
+    theme_synthesis: bool = False,
+    use_langfuse_template: bool = True,
+) -> PromptBundle:
     """Build the prompt for note-grounded answers.
     
     Args:
@@ -115,17 +121,51 @@ def build_answer_prompt(context: str, question: str) -> PromptBundle:
         PromptBundle: Result value.
     """
 
-    fallback = (
-        "You are Study Pal, a grounded tutor.\n"
-        "Answer only from the provided notes context.\n"
-        "If the answer is not supported by the context, say that clearly.\n"
-        "Use a concise, student-friendly explanation.\n\n"
-        f"Context:\n{context}\n\n"
-        f"Question:\n{question}"
-    )
+    if theme_synthesis:
+        fallback = (
+            "You are Study Pal, a grounded tutor and synthesis assistant.\n"
+            "Answer only from the provided notes context.\n"
+            "The user asked for underlying themes, so do NOT just list chapter titles or table-of-contents items.\n"
+            "Extract 3-4 underlying scientific or philosophical themes.\n"
+            "For each theme include:\n"
+            "1) one-sentence claim,\n"
+            "2) why it matters,\n"
+            "3) 1-2 citation labels from the provided context (e.g., [filename p.#]).\n"
+            "If evidence is partial, say that briefly, then still provide the best-supported synthesis.\n"
+            "Keep the explanation concise and readable.\n"
+            "Use citation labels inline in each theme statement.\n\n"
+            f"Context:\n{context}\n\n"
+            f"Question:\n{question}"
+        )
+    else:
+        fallback = (
+            "You are Study Pal, a grounded tutor.\n"
+            "Answer only from the provided notes context.\n"
+            "If the answer is not supported by the context, say that clearly.\n"
+            "Use a concise, student-friendly explanation.\n"
+            "Response format:\n"
+            "1) Start with a direct answer sentence.\n"
+            "2) Add 1-2 evidence sentences grounded in the notes.\n"
+            "3) End with one short 'why it matters' synthesis sentence.\n"
+            "Include at least one inline citation label from context in the evidence sentences "
+            "(example: [Chapter 7, p.12]).\n\n"
+            f"Context:\n{context}\n\n"
+            f"Question:\n{question}"
+        )
+    if not use_langfuse_template:
+        return PromptBundle(
+            text=fallback,
+            prompt=None,
+            name=settings.langfuse_prompt_answer,
+        )
+
     return _resolve_prompt(
         prompt_name=settings.langfuse_prompt_answer,
-        variables={"context": context, "question": question},
+        variables={
+            "context": context,
+            "question": question,
+            "theme_synthesis": theme_synthesis,
+        },
         fallback=fallback,
     )
 

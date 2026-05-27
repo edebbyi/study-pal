@@ -35,6 +35,7 @@ from src.llm.prompts import (
     build_structured_answer_prompt,
     build_study_plan_prompt,
 )
+from src.publishing.prompts import build_book_brief_prompt, build_marketing_copy_prompt
 
 STRUCTURED_ANSWER_SCHEMA: dict[str, object] = {
     "type": "object",
@@ -82,14 +83,14 @@ class ChatClient:
 
 
 
-def _get_chat_client() -> ChatClient | None:
+def _get_chat_client(api_key_override: str | None = None) -> ChatClient | None:
     """Create a chat client when API credentials are available.
     
     Returns:
         ChatClient | None: Result value.
     """
 
-    api_key = get_effective_openrouter_api_key()
+    api_key = (api_key_override or "").strip() or get_effective_openrouter_api_key()
     if not api_key:
         return None
     return ChatClient(
@@ -407,6 +408,65 @@ def _repair_structured_answer_payload(
         return None
 
 
+def _repair_book_brief_payload(
+    *,
+    chat_client: ChatClient,
+    prompt_text: str,
+    raw_output: str,
+) -> dict[str, object] | None:
+    """Repair malformed Book Brief JSON output.
+
+    Returns:
+        dict[str, object] | None: Repaired payload when successful.
+    """
+    schema_hint = {
+        "title": "string|null",
+        "genre": "string|null",
+        "primary_audience": "string",
+        "secondary_audience": "string|null",
+        "reader_buyer_persona": {
+            "persona_name": "string",
+            "role_context": "string",
+            "motivation": "string",
+            "needs": "string",
+            "likely_objections": "string",
+            "discovery_channels": "string",
+            "messaging_notes": "string",
+        },
+        "core_themes": ["string"],
+        "audience_keywords": ["string"],
+        "one_sentence_positioning": "string",
+        "positioning_recommendation": "string",
+        "marketing_angles": ["string"],
+        "sales_use_case": "string",
+        "risk_flags": ["string"],
+    }
+    repair_prompt = (
+        "Fix malformed JSON and return only one valid JSON object.\n"
+        "Do not add markdown, comments, or code fences.\n\n"
+        f"Expected schema:\n{json.dumps(schema_hint)}\n\n"
+        f"Original prompt:\n{prompt_text}\n\n"
+        f"Malformed output:\n{raw_output}"
+    )
+    try:
+        response = _create_chat_completion(
+            chat_client,
+            model=settings.chat_model,
+            max_tokens=max(settings.max_chat_tokens, 700),
+            response_format=JSON_OBJECT_RESPONSE_FORMAT,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You repair malformed JSON and return only valid JSON.",
+                },
+                {"role": "user", "content": repair_prompt},
+            ],
+        )
+        return _parse_json_payload(_extract_message_text(response))
+    except (APIConnectionError, APIStatusError, APITimeoutError, ValueError, json.JSONDecodeError):
+        return None
+
+
 def _truncate_sentences(text: str, max_sentences: int) -> str:
     """Truncate sentences.
     
@@ -572,7 +632,13 @@ def generate_document_metadata(filename: str, document_excerpt: str) -> Document
 
 
 
-def answer_from_context(question: str, retrieved_chunks: list[RetrievedChunk]) -> TeachingResponse:
+def answer_from_context(
+    question: str,
+    retrieved_chunks: list[RetrievedChunk],
+    *,
+    api_key_override: str | None = None,
+    theme_synthesis: bool = False,
+) -> TeachingResponse:
     """Answer a question using only the provided context.
     
     Args:
@@ -590,9 +656,30 @@ def answer_from_context(question: str, retrieved_chunks: list[RetrievedChunk]) -
             used_fallback=True,
         )
 
-    chat_client = _get_chat_client()
+    chat_client = _get_chat_client(api_key_override)
     if chat_client is not None:
-        prompt_bundle = build_answer_prompt(_build_context(retrieved_chunks), question)
+        system_prompt = "You are a careful tutor who only answers from provided class notes."
+        if theme_synthesis:
+            system_prompt = (
+                "You are an expert academic tutor. Your task is to extract and synthesize the core themes "
+                "of a book using ONLY the provided class notes.\n\n"
+                "Follow these strict execution rules:\n"
+                "1. DO NOT simply list chapter titles, table of contents, or raw topics.\n"
+                '2. If the notes explicitly mention a specific list (like "Eight Core Concepts") but do not '
+                "outline them, do not stall or apologize repeatedly. Acknowledge the missing list in exactly "
+                "one brief sentence, then immediately pivot to your main task.\n"
+                "3. Synthesize the underlying themes by looking at the broader picture. Group the available "
+                "chapter topics into 3-4 conceptual pillars (for example, how they connect human behavior, "
+                "biological mechanics, or change over time).\n"
+                "4. Maintain a supportive, academic, and direct tone. Never be defensive about missing data; "
+                "maximize the value of the information that is present."
+            )
+        prompt_bundle = build_answer_prompt(
+            _build_context(retrieved_chunks),
+            question,
+            theme_synthesis=theme_synthesis,
+            use_langfuse_template=settings.langfuse_use_answer_prompt_template,
+        )
         try:
             with _langfuse_generation(
                 enabled=chat_client.enable_tracing,
@@ -607,7 +694,7 @@ def answer_from_context(question: str, retrieved_chunks: list[RetrievedChunk]) -
                     messages=[
                         {
                             "role": "system",
-                            "content": "You are a careful tutor who only answers from provided class notes.",
+                            "content": system_prompt,
                         },
                         {"role": "user", "content": prompt_bundle.text},
                     ],
@@ -1006,4 +1093,160 @@ def generate_study_plan_from_context(
         payload = json.loads(_clean_json(_extract_message_text(response)))
         return StudyPlan.model_validate(payload)
     except (APIConnectionError, APIStatusError, APITimeoutError, json.JSONDecodeError, ValueError):
+        return None
+
+
+def generate_book_brief_from_context(
+    *,
+    retrieved_chunks: list[RetrievedChunk],
+    audience: str | None = None,
+    spoiler_level: str | None = None,
+    notes: str | None = None,
+    document_title_hint: str | None = None,
+    api_key_override: str | None = None,
+) -> dict[str, object] | None:
+    """Generate a structured Publishing Mode book brief from retrieved context.
+
+    Args:
+        retrieved_chunks (list[RetrievedChunk]): Grounded chunks for generation.
+        audience (str | None): Optional audience guidance.
+        spoiler_level (str | None): Optional spoiler guidance.
+        notes (str | None): Optional operator notes.
+        document_title_hint (str | None): Optional title hint from workspace metadata.
+
+    Returns:
+        dict[str, object] | None: Parsed JSON payload, or None on failure.
+    """
+    if not retrieved_chunks:
+        return None
+
+    chat_client = _get_chat_client(api_key_override)
+    if chat_client is None:
+        return None
+
+    prompt_text = build_book_brief_prompt(
+        retrieved_chunks=retrieved_chunks,
+        audience=audience,
+        spoiler_level=spoiler_level,
+        notes=notes,
+        document_title_hint=document_title_hint,
+    )
+    prompt_bundle = PromptBundle(
+        text=prompt_text,
+        prompt=None,
+        name="publishing_book_brief",
+    )
+    for attempt in range(2):
+        try:
+            with _langfuse_generation(
+                enabled=chat_client.enable_tracing,
+                feature="publishing_book_brief",
+                prompt_bundle=prompt_bundle,
+                metadata={
+                    "num_chunks": str(len(retrieved_chunks)),
+                    "audience": (audience or "").strip(),
+                    "spoiler_level": (spoiler_level or "").strip(),
+                    "attempt": str(attempt + 1),
+                },
+            ) as generation:
+                response = _create_chat_completion(
+                    chat_client,
+                    model=settings.chat_model,
+                    max_tokens=max(settings.max_chat_tokens, 1000),
+                    response_format=JSON_OBJECT_RESPONSE_FORMAT,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": (
+                                "You create grounded publishing briefs as strict JSON. "
+                                "Never invent unsupported details."
+                            ),
+                        },
+                        {"role": "user", "content": prompt_text},
+                    ],
+                )
+                output_text = _extract_message_text(response)
+                _update_generation(generation, output_text, response)
+            try:
+                return _parse_json_payload(output_text)
+            except (ValueError, json.JSONDecodeError):
+                repaired_payload = _repair_book_brief_payload(
+                    chat_client=chat_client,
+                    prompt_text=prompt_text,
+                    raw_output=output_text,
+                )
+                if repaired_payload is not None:
+                    return repaired_payload
+        except (APIConnectionError, APIStatusError, APITimeoutError):
+            continue
+    return None
+
+
+def generate_marketing_copy_from_context(
+    *,
+    retrieved_chunks: list[RetrievedChunk],
+    output_type: str,
+    tone: str | None = None,
+    audience: str | None = None,
+    spoiler_level: str | None = None,
+    length: str | None = None,
+    notes: str | None = None,
+    document_title_hint: str | None = None,
+    api_key_override: str | None = None,
+) -> dict[str, object] | None:
+    """Generate structured Publishing Mode marketing copy from retrieved context."""
+    if not retrieved_chunks:
+        return None
+
+    chat_client = _get_chat_client(api_key_override)
+    if chat_client is None:
+        return None
+
+    prompt_text = build_marketing_copy_prompt(
+        retrieved_chunks=retrieved_chunks,
+        output_type=output_type,
+        tone=tone,
+        audience=audience,
+        spoiler_level=spoiler_level,
+        length=length,
+        notes=notes,
+        document_title_hint=document_title_hint,
+    )
+    prompt_bundle = PromptBundle(
+        text=prompt_text,
+        prompt=None,
+        name="publishing_marketing_copy",
+    )
+    try:
+        with _langfuse_generation(
+            enabled=chat_client.enable_tracing,
+            feature="publishing_marketing_copy",
+            prompt_bundle=prompt_bundle,
+            metadata={
+                "num_chunks": str(len(retrieved_chunks)),
+                "output_type": output_type,
+                "audience": (audience or "").strip(),
+                "spoiler_level": (spoiler_level or "").strip(),
+            },
+        ) as generation:
+            response = _create_chat_completion(
+                chat_client,
+                model=settings.chat_model,
+                max_tokens=max(settings.max_chat_tokens, 900),
+                response_format=JSON_OBJECT_RESPONSE_FORMAT,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You create grounded publishing marketing outputs as strict JSON. "
+                            "Never invent unsupported details."
+                        ),
+                    },
+                    {"role": "user", "content": prompt_text},
+                ],
+            )
+            output_text = _extract_message_text(response)
+            _update_generation(generation, output_text, response)
+        return _parse_json_payload(output_text)
+    except (APIConnectionError, APIStatusError, APITimeoutError, ValueError, json.JSONDecodeError):
         return None

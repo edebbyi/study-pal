@@ -81,11 +81,24 @@ def chunk_document(
 
     all_chunks: list[Chunk] = []
     global_chunk_counter = 0
+    chapter_index_lookup: dict[str, int] = {}
+    next_chapter_index = 1
 
     for page in document.pages:
         page_chunks = split_text(page.text)
-        for chunk_text in page_chunks:
-            chapter = chapters_by_page.get(page.page_number) if chapters_by_page else None
+        chapter = chapters_by_page.get(page.page_number) if chapters_by_page else None
+        chapter_index: int | None = None
+        if chapter:
+            normalized_chapter = chapter.strip()
+            if normalized_chapter and normalized_chapter.lower() != "overview":
+                if normalized_chapter not in chapter_index_lookup:
+                    chapter_index_lookup[normalized_chapter] = next_chapter_index
+                    next_chapter_index += 1
+                chapter_index = chapter_index_lookup[normalized_chapter]
+            else:
+                chapter_index = 0
+
+        for chunk_index_in_page, chunk_text in enumerate(page_chunks):
             citation_parts = [document.filename]
             if chapter:
                 citation_parts.append(chapter)
@@ -105,6 +118,10 @@ def chunk_document(
                     document_summary=document_summary,
                     topic=document_topic,
                     chapter=chapter,
+                    chapter_index=chapter_index,
+                    page_start=page.page_number,
+                    page_end=page.page_number,
+                    chunk_index_in_page=chunk_index_in_page,
                     user_id=user_id,
                 )
             )

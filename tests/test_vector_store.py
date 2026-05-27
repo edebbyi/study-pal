@@ -109,7 +109,7 @@ def test_rebuild_document_library_from_remote_groups_chunks_into_workspace(monke
         monkeypatch: Test fixture or parameter.
     """
 
-    monkeypatch.setattr(vector_store, "get_pinecone_index", lambda: FakeIndex())
+    monkeypatch.setattr(vector_store, "get_pinecone_indexes", lambda: [FakeIndex()])
 
     workspaces = rebuild_document_library_from_remote()
 
@@ -123,7 +123,7 @@ def test_rebuild_document_library_from_remote_groups_chunks_into_workspace(monke
 def test_query_remote_chunks_filters_by_document_and_user_without_session(monkeypatch) -> None:
     """Document-scoped retrieval should not require session-id match."""
     fake_index = FakeIndex()
-    monkeypatch.setattr(vector_store, "get_pinecone_index", lambda: fake_index)
+    monkeypatch.setattr(vector_store, "get_pinecone_indexes", lambda: [fake_index])
 
     results = vector_store.query_remote_chunks(
         {"values": [0.1, 0.2, 0.3]},
@@ -145,7 +145,7 @@ def test_query_remote_chunks_filters_by_document_and_user_without_session(monkey
 def test_query_remote_chunks_returns_empty_when_document_scope_has_no_user(monkeypatch) -> None:
     """Document-scoped retrieval requires user scope in multitenant mode."""
     fake_index = FakeIndex()
-    monkeypatch.setattr(vector_store, "get_pinecone_index", lambda: fake_index)
+    monkeypatch.setattr(vector_store, "get_pinecone_indexes", lambda: [fake_index])
 
     results = vector_store.query_remote_chunks(
         {"values": [0.1, 0.2, 0.3]},
@@ -161,7 +161,7 @@ def test_query_remote_chunks_returns_empty_when_document_scope_has_no_user(monke
 def test_upsert_remote_chunks_returns_true_on_success(monkeypatch) -> None:
     """Upsert should report success when Pinecone accepts payload."""
     fake_index = FakeIndex()
-    monkeypatch.setattr(vector_store, "get_pinecone_index", lambda: fake_index)
+    monkeypatch.setattr(vector_store, "get_pinecone_indexes", lambda: [fake_index])
     chunks = [
         Chunk(
             id="c-1",
@@ -186,7 +186,7 @@ def test_upsert_remote_chunks_returns_true_on_success(monkeypatch) -> None:
 def test_upsert_remote_chunks_returns_false_on_pinecone_error(monkeypatch) -> None:
     """Upsert should report failure when Pinecone rejects payload."""
     fake_index = FakeFailingUpsertIndex()
-    monkeypatch.setattr(vector_store, "get_pinecone_index", lambda: fake_index)
+    monkeypatch.setattr(vector_store, "get_pinecone_indexes", lambda: [fake_index])
     chunks = [
         Chunk(
             id="c-1",

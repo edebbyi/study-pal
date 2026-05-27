@@ -12,6 +12,23 @@ from src.core.models import Chunk, RetrievedChunk, SourceType
 from src.data.embeddings import EmbeddingVector
 
 
+def _normalize_pinecone_host(raw_host: str) -> str:
+    """Normalize Pinecone host values from env settings.
+
+    Args:
+        raw_host (str): Raw host value from settings.
+
+    Returns:
+        str: Hostname without scheme or trailing slash.
+    """
+    host = raw_host.strip()
+    if host.startswith("https://"):
+        host = host[len("https://") :]
+    elif host.startswith("http://"):
+        host = host[len("http://") :]
+    return host.rstrip("/")
+
+
 class InMemoryVectorStore:
     """Store and retrieve chunks in memory for a session."""
 
@@ -61,6 +78,10 @@ def normalize_retrieved_chunks(scored_chunks: list[tuple[Chunk, float]]) -> list
             chunk_id=chunk.chunk_id,
             chapter=chunk.chapter,
             topic=chunk.topic,
+            chapter_index=chunk.chapter_index,
+            page_start=chunk.page_start,
+            page_end=chunk.page_end,
+            chunk_index_in_page=chunk.chunk_index_in_page,
         )
         for chunk, score in scored_chunks
     ]
@@ -72,20 +93,43 @@ def get_pinecone_index():
     Returns:
         Pinecone.Index | None: The configured index client or None.
     """
+    candidates = get_pinecone_indexes()
+    return candidates[0] if candidates else None
+
+
+def get_pinecone_indexes() -> list[object]:
+    """Return candidate Pinecone index clients in priority order.
+
+    Returns:
+        list[object]: Candidate index clients to try.
+    """
     if not settings.pinecone_api_key:
-        return None
-    client = Pinecone(api_key=settings.pinecone_api_key)
-    if settings.pinecone_host:
-        try:
-            return client.Index(host=settings.pinecone_host)
-        except Exception:
-            return None
-    if not settings.pinecone_index_name:
-        return None
+        return []
+
     try:
-        return client.Index(settings.pinecone_index_name)
+        client = Pinecone(api_key=settings.pinecone_api_key)
     except Exception:
-        return None
+        return []
+
+    candidates: list[object] = []
+    seen: set[str] = set()
+
+    normalized_host = _normalize_pinecone_host(settings.pinecone_host)
+    if normalized_host:
+        try:
+            candidates.append(client.Index(host=normalized_host))
+            seen.add(f"host:{normalized_host}")
+        except Exception:
+            pass
+
+    index_name = settings.pinecone_index_name.strip()
+    if index_name and f"name:{index_name}" not in seen:
+        try:
+            candidates.append(client.Index(index_name))
+        except Exception:
+            pass
+
+    return candidates
 
 
 def upsert_remote_chunks(chunks: list[Chunk], vectors: list[EmbeddingVector]) -> bool:
@@ -98,8 +142,8 @@ def upsert_remote_chunks(chunks: list[Chunk], vectors: list[EmbeddingVector]) ->
     Returns:
         bool: True when Pinecone upsert succeeds.
     """
-    index = get_pinecone_index()
-    if index is None or not chunks:
+    indexes = get_pinecone_indexes()
+    if not indexes or not chunks:
         return False
 
     payload = []
@@ -113,6 +157,7 @@ def upsert_remote_chunks(chunks: list[Chunk], vectors: list[EmbeddingVector]) ->
                     "filename": chunk.filename,
                     "page": chunk.page,
                     "chunk_id": chunk.chunk_id,
+                    "chunk_index_in_page": chunk.chunk_index_in_page,
                     "session_id": chunk.session_id,
                     "user_id": chunk.user_id,
                     "citation": chunk.citation,
@@ -121,16 +166,21 @@ def upsert_remote_chunks(chunks: list[Chunk], vectors: list[EmbeddingVector]) ->
                     "document_title": chunk.document_title,
                     "document_summary": chunk.document_summary,
                     "chapter": chunk.chapter,
+                    "chapter_index": chunk.chapter_index,
+                    "page_start": chunk.page_start,
+                    "page_end": chunk.page_end,
                     "topic": chunk.topic,
                 },
             }
         )
 
-    try:
-        index.upsert(vectors=payload)
-        return True
-    except (PineconeApiException, PineconeConfigurationError, PineconeProtocolError):
-        return False
+    for index in indexes:
+        try:
+            index.upsert(vectors=payload)
+            return True
+        except (PineconeApiException, PineconeConfigurationError, PineconeProtocolError, Exception):
+            continue
+    return False
 
 
 def query_remote_chunks(
@@ -152,11 +202,11 @@ def query_remote_chunks(
     Returns:
         list[RetrievedChunk]: Retrieved chunk results.
     """
-    index = get_pinecone_index()
-    if index is None:
+    indexes = get_pinecone_indexes()
+    if not indexes:
         return []
 
-    def _run_query(filter_payload: dict) -> list[RetrievedChunk]:
+    def _run_query(index: object, filter_payload: dict) -> list[RetrievedChunk] | None:
         try:
             response = index.query(
                 vector=query_vector["values"],
@@ -165,7 +215,7 @@ def query_remote_chunks(
                 filter=filter_payload,
             )
         except (PineconeApiException, PineconeConfigurationError, PineconeProtocolError, Exception):
-            return []
+            return None
         return _normalize_matches(response.matches)
 
     if document_id:
@@ -174,12 +224,23 @@ def query_remote_chunks(
             return []
         filter_payload: dict[str, object] = {"document_id": {"$eq": document_id}}
         filter_payload = {"$and": [filter_payload, {"user_id": {"$eq": user_id}}]}
-        return _run_query(filter_payload)
+        for index in indexes:
+            result = _run_query(index, filter_payload)
+            if result is not None:
+                return result
+        return []
 
     if session_id:
+        session_filter: dict[str, object]
         if user_id:
-            return _run_query({"$and": [{"session_id": {"$eq": session_id}}, {"user_id": {"$eq": user_id}}]})
-        return _run_query({"session_id": {"$eq": session_id}})
+            session_filter = {"$and": [{"session_id": {"$eq": session_id}}, {"user_id": {"$eq": user_id}}]}
+        else:
+            session_filter = {"session_id": {"$eq": session_id}}
+        for index in indexes:
+            result = _run_query(index, session_filter)
+            if result is not None:
+                return result
+        return []
     return []
 
 
@@ -205,6 +266,18 @@ def _normalize_matches(matches: list[object]) -> list[RetrievedChunk]:
                 chunk_id=int(metadata.get("chunk_id", 0)),
                 chapter=str(metadata.get("chapter")) if metadata.get("chapter") else None,
                 topic=str(metadata.get("topic")) if metadata.get("topic") else None,
+                chapter_index=int(metadata.get("chapter_index"))
+                if metadata.get("chapter_index") is not None
+                else None,
+                page_start=int(metadata.get("page_start"))
+                if metadata.get("page_start") is not None
+                else None,
+                page_end=int(metadata.get("page_end"))
+                if metadata.get("page_end") is not None
+                else None,
+                chunk_index_in_page=int(metadata.get("chunk_index_in_page"))
+                if metadata.get("chunk_index_in_page") is not None
+                else None,
             )
         )
     return normalized
@@ -236,6 +309,12 @@ def _chunk_from_metadata(vector_id: str, metadata: dict) -> Chunk:
         document_summary=str(metadata.get("document_summary")) if metadata.get("document_summary") else None,
         topic=str(metadata.get("topic")) if metadata.get("topic") else None,
         chapter=str(metadata.get("chapter")) if metadata.get("chapter") else None,
+        chapter_index=int(metadata.get("chapter_index")) if metadata.get("chapter_index") is not None else None,
+        page_start=int(metadata.get("page_start")) if metadata.get("page_start") is not None else None,
+        page_end=int(metadata.get("page_end")) if metadata.get("page_end") is not None else None,
+        chunk_index_in_page=int(metadata.get("chunk_index_in_page"))
+        if metadata.get("chunk_index_in_page") is not None
+        else None,
         user_id=str(metadata.get("user_id")) if metadata.get("user_id") else None,
     )
 
@@ -253,32 +332,39 @@ def rebuild_document_library_from_remote(
     Returns:
         list[dict[str, object]]: Workspace summaries rebuilt from Pinecone.
     """
-    index = get_pinecone_index()
-    if index is None:
+    indexes = get_pinecone_indexes()
+    if not indexes:
         return []
 
-    try:
-        vector_ids: list[str] = []
-        for id_batch in index.list(limit=100):
-            vector_ids.extend(id_batch)
-            if len(vector_ids) >= max_vectors:
-                vector_ids = vector_ids[:max_vectors]
-                break
+    remote_chunks: list[Chunk] = []
+    for index in indexes:
+        try:
+            vector_ids: list[str] = []
+            for id_batch in index.list(limit=100):
+                vector_ids.extend(id_batch)
+                if len(vector_ids) >= max_vectors:
+                    vector_ids = vector_ids[:max_vectors]
+                    break
 
-        if not vector_ids:
-            return []
+            if not vector_ids:
+                return []
 
-        remote_chunks: list[Chunk] = []
-        for start in range(0, len(vector_ids), 100):
-            batch_ids = vector_ids[start : start + 100]
-            fetch_response = index.fetch(ids=batch_ids)
-            vectors = getattr(fetch_response, "vectors", {}) or {}
-            for vector_id, vector_payload in vectors.items():
-                metadata = getattr(vector_payload, "metadata", None) or {}
-                if not metadata:
-                    continue
-                remote_chunks.append(_chunk_from_metadata(vector_id, metadata))
-    except (PineconeApiException, PineconeConfigurationError, PineconeProtocolError, AttributeError, ValueError):
+            remote_chunks = []
+            for start in range(0, len(vector_ids), 100):
+                batch_ids = vector_ids[start : start + 100]
+                fetch_response = index.fetch(ids=batch_ids)
+                vectors = getattr(fetch_response, "vectors", {}) or {}
+                for vector_id, vector_payload in vectors.items():
+                    metadata = getattr(vector_payload, "metadata", None) or {}
+                    if not metadata:
+                        continue
+                    remote_chunks.append(_chunk_from_metadata(vector_id, metadata))
+            break
+        except (PineconeApiException, PineconeConfigurationError, PineconeProtocolError, AttributeError, ValueError):
+            remote_chunks = []
+            continue
+
+    if not remote_chunks:
         return []
 
     grouped_chunks: dict[tuple[str, str, str | None], list[Chunk]] = defaultdict(list)

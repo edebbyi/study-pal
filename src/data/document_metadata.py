@@ -7,9 +7,20 @@ from pathlib import Path
 
 from src.llm.llm_client import generate_document_metadata
 from src.core.models import Document, DocumentMetadata
+from src.core.utils import clean_ocr_text
 
 
-chapter_pattern = re.compile(r"\bchapter\s+\d+\b(?:[:\-\s]+[A-Za-z0-9 ,&()]+)?", re.IGNORECASE)
+_CHAPTER_PATTERNS = (
+    re.compile(
+        r"\bchapter\s*(\d+|[ivxlcdm]+)\b(?:[:\-\s]+[A-Za-z0-9 ,&()'\".-]{0,80})?",
+        re.IGNORECASE,
+    ),
+    # OCR variant with no space: CHAPTERVI
+    re.compile(
+        r"\bchapter(\d+|[ivxlcdm]+)\b(?:[:\-\s]+[A-Za-z0-9 ,&()'\".-]{0,80})?",
+        re.IGNORECASE,
+    ),
+)
 
 
 
@@ -113,9 +124,15 @@ def detect_chapters(document: Document) -> dict[int, str]:
     current_chapter: str | None = None
 
     for page in document.pages:
-        match = chapter_pattern.search(page.text[:1000])  # limit scan window to keep chapter detection fast
-        if match is not None:
-            current_chapter = match.group(0).strip().title()
+        # Run chapter detection on a cleaned preview to offset OCR spacing artifacts.
+        preview = clean_ocr_text(page.text[:1600])
+        for pattern in _CHAPTER_PATTERNS:
+            match = pattern.search(preview)
+            if match is not None:
+                raw_heading = match.group(0).strip()
+                # Keep compact heading label to stabilize chapter tags.
+                current_chapter = re.sub(r"\s{2,}", " ", raw_heading).title()
+                break
         chapters_by_page[page.page_number] = current_chapter or "Overview"
 
     return chapters_by_page

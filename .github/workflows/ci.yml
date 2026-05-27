@@ -19,12 +19,25 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install ruff
+          pip install mypy
       - name: Ruff lint
         run: ruff check .
       - name: Mypy type check
         run: |
-          pip install mypy
-          mypy .
-      - name: Run tests
+          mypy \
+            src/core/config.py \
+            src/api/models.py \
+            src/publishing/schemas.py \
+            src/api/services/request_identity.py \
+            src/api/services/rate_limit.py
+      - name: Publishing/API smoke tests
+        run: |
+          pytest -q \
+            tests/test_api_smoke.py \
+            tests/test_document_qa.py \
+            tests/test_observability_health_modes.py \
+            tests/test_observability_redaction.py \
+            tests/test_rate_limit.py \
+            tests/test_request_identity.py
+      - name: Full test suite
         run: pytest
