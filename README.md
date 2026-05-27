@@ -25,6 +25,7 @@ Study Pal is a Streamlit app for grounded Q&A over uploaded notes and guided mas
 - Deployment (local, Docker, Streamlit Cloud): [`docs/deployment.md`](docs/deployment.md)
 - Architecture: [`docs/architecture.md`](docs/architecture.md)
 - Env safety: [`docs/env-safety.md`](docs/env-safety.md)
+- Engineering standards: [`docs/engineering-standards.md`](docs/engineering-standards.md)
 - API reference: [`docs/api-reference.md`](docs/api-reference.md)
 - Observability runbook: [`docs/observability-runbook.md`](docs/observability-runbook.md)
 - Evaluation runbook: [`docs/evaluation-runbook.md`](docs/evaluation-runbook.md)
