@@ -169,22 +169,128 @@ def _init_publishing_ui_state() -> None:
     st.session_state.setdefault("publishing_last_marketing_response", None)
 
 
-def _publishing_source_expander(sources: list[object], *, title: str = "Source chunks") -> None:
-    """Render returned source chunks in a readable expandable section."""
-    normalized_sources = [item for item in sources if isinstance(item, dict)]
-    if not normalized_sources:
-        st.caption("No source chunks returned.")
-        return
-    with st.expander(f"{title} ({len(normalized_sources)})", expanded=False):
-        for index, source in enumerate(normalized_sources, start=1):
-            chunk_id = str(source.get("chunk_id") or "unknown")
+def _citation_lookup_for_document(document_id: str | None) -> dict[str, str]:
+    """Build chunk_id -> citation lookup for one indexed document workspace."""
+    cleaned_doc_id = (document_id or "").strip()
+    if not cleaned_doc_id:
+        return {}
+    raw_library = st.session_state.get("document_library", [])
+    document_library = raw_library if isinstance(raw_library, list) else []
+    for workspace in document_library:
+        if not isinstance(workspace, dict):
+            continue
+        workspace_doc_id = str(workspace.get("document_id") or "").strip()
+        if workspace_doc_id != cleaned_doc_id:
+            continue
+        citation_lookup: dict[str, str] = {}
+        chunks = workspace.get("chunks", [])
+        if not isinstance(chunks, list):
+            return {}
+        for chunk in chunks:
+            if isinstance(chunk, dict):
+                chunk_id = chunk.get("chunk_id")
+                citation = chunk.get("citation")
+            else:
+                chunk_id = getattr(chunk, "chunk_id", None)
+                citation = getattr(chunk, "citation", None)
+            if chunk_id is None:
+                continue
+            citation_text = str(citation or "").strip()
+            if not citation_text:
+                continue
+            citation_lookup[str(chunk_id)] = citation_text
+        return citation_lookup
+    return {}
+
+
+def _render_sources_panel(
+    *,
+    title: str,
+    citations: list[str] | None = None,
+    sources: list[object] | None = None,
+    document_id: str | None = None,
+) -> None:
+    """Render source evidence consistently across Study and Publishing modes."""
+    source_rows: list[dict[str, object]] = []
+    if citations:
+        for citation in citations:
+            cleaned = str(citation).strip()
+            if not cleaned:
+                continue
+            source_rows.append({"label": cleaned, "snippet": ""})
+
+    citation_lookup = _citation_lookup_for_document(document_id)
+    if sources:
+        for source in sources:
+            if not isinstance(source, dict):
+                continue
+            chunk_id = str(source.get("chunk_id") or "").strip()
+            citation_value = str(source.get("citation") or "").strip()
+            label = citation_value or citation_lookup.get(chunk_id, "")
+            if not label:
+                label = f"Chunk {chunk_id}" if chunk_id else "Chunk (unknown id)"
+            snippet = str(source.get("text") or "").strip()
             score = source.get("score")
-            header = f"{index}. chunk_id={chunk_id}"
-            if isinstance(score, (int, float)):
-                header += f" | score={float(score):.3f}"
-            st.markdown(header)
-            text = str(source.get("text") or "").strip()
-            st.caption(text if text else "(empty source text)")
+            source_rows.append(
+                {
+                    "label": label,
+                    "snippet": snippet,
+                    "chunk_id": chunk_id or None,
+                    "score": score,
+                }
+            )
+
+    if not source_rows:
+        return
+
+    def _score_sort_key(row: dict[str, object]) -> float:
+        score = row.get("score")
+        return float(score) if isinstance(score, (int, float)) else float("-inf")
+
+    if any(isinstance(row.get("score"), (int, float)) for row in source_rows):
+        source_rows = sorted(source_rows, key=_score_sort_key, reverse=True)
+
+    with st.expander(f"{title} ({len(source_rows)})", expanded=False):
+        technical_rows: list[str] = []
+        for index, row in enumerate(source_rows, start=1):
+            st.markdown(f"**{index}. {row.get('label', 'Unknown source')}**")
+            snippet = str(row.get("snippet") or "").strip()
+            if snippet:
+                st.caption(snippet)
+            chunk_id = row.get("chunk_id")
+            score = row.get("score")
+            if chunk_id or isinstance(score, (int, float)):
+                detail = f"{index}. "
+                if chunk_id:
+                    detail += f"chunk_id={chunk_id}"
+                if isinstance(score, (int, float)):
+                    if chunk_id:
+                        detail += " | "
+                    detail += f"score={float(score):.3f}"
+                technical_rows.append(detail)
+
+        if technical_rows:
+            with st.expander("Technical source details", expanded=False):
+                st.caption(
+                    "chunk_id = internal retrieved-chunk identifier; "
+                    "score = retriever relevance score (higher is usually a better match)."
+                )
+                for detail in technical_rows:
+                    st.markdown(f"- {detail}")
+
+
+def _publishing_source_expander(
+    sources: list[object],
+    *,
+    title: str = "Sources used",
+    document_id: str | None = None,
+) -> None:
+    """Render publishing sources with the same presentation style as Study Mode."""
+    _render_sources_panel(
+        title=title,
+        sources=sources,
+        document_id=document_id,
+    )
 
 
 def _publishing_metadata_block(metadata: object) -> None:
@@ -227,6 +333,12 @@ def _publishing_run_details_block(response_payload: dict[str, object]) -> None:
     _publishing_metadata_block(response_payload.get("metadata"))
 
 
+def _render_run_details_panel(response_payload: dict[str, object]) -> None:
+    """Render run details in a collapsed panel by default."""
+    with st.expander("Run Details", expanded=False):
+        _publishing_run_details_block(response_payload)
+
+
 def _render_workflow_trace_panel(trace_payload: object) -> None:
     """Render observable processing steps without hidden model reasoning."""
     with st.expander("Workflow Trace", expanded=False):
@@ -255,40 +367,40 @@ def _render_workflow_trace_panel(trace_payload: object) -> None:
 
 def _render_quality_checks_block(checks_payload: object) -> None:
     """Render quality check fields for publishing outputs."""
-    st.markdown("#### Quality Checks")
-    if not isinstance(checks_payload, dict):
-        st.caption("No quality checks returned.")
-        return
+    with st.expander("Quality Checks", expanded=False):
+        if not isinstance(checks_payload, dict):
+            st.caption("No quality checks returned.")
+            return
 
-    def _bool_label(value: object) -> str:
-        if isinstance(value, bool):
-            return "yes" if value else "no"
-        if isinstance(value, str):
-            lowered = value.strip().lower()
-            if lowered in {"yes", "no", "unknown"}:
-                return lowered
-        return "unknown"
+        def _bool_label(value: object) -> str:
+            if isinstance(value, bool):
+                return "yes" if value else "no"
+            if isinstance(value, str):
+                lowered = value.strip().lower()
+                if lowered in {"yes", "no", "unknown"}:
+                    return lowered
+            return "unknown"
 
-    st.markdown(f"- Grounded in source: {_bool_label(checks_payload.get('grounded_in_source')).title()}")
-    st.markdown(
-        "- Unsupported claims detected: "
-        f"{_bool_label(checks_payload.get('unsupported_claims_detected')).title()}"
-    )
-    spoiler_level = str(checks_payload.get("spoiler_level") or "unknown").strip()
-    st.markdown(f"- Spoiler level: {spoiler_level.title() if spoiler_level else 'Unknown'}")
-    st.markdown(
-        f"- Missing context present: {_bool_label(checks_payload.get('missing_context_present')).title()}"
-    )
-    st.markdown(
-        "- Human review recommended: "
-        f"{_bool_label(checks_payload.get('human_review_recommended')).title()}"
-    )
-    context_coverage = str(checks_payload.get("context_coverage_label") or "").strip()
-    if context_coverage:
-        st.markdown(f"- Context coverage: {context_coverage.title()}")
-    coverage_score = checks_payload.get("context_coverage_score")
-    if isinstance(coverage_score, (int, float)):
-        st.markdown(f"- Context coverage score: {float(coverage_score):.3f}")
+        st.markdown(f"- Grounded in source: {_bool_label(checks_payload.get('grounded_in_source')).title()}")
+        st.markdown(
+            "- Unsupported claims detected: "
+            f"{_bool_label(checks_payload.get('unsupported_claims_detected')).title()}"
+        )
+        spoiler_level = str(checks_payload.get("spoiler_level") or "unknown").strip()
+        st.markdown(f"- Spoiler level: {spoiler_level.title() if spoiler_level else 'Unknown'}")
+        st.markdown(
+            f"- Missing context present: {_bool_label(checks_payload.get('missing_context_present')).title()}"
+        )
+        st.markdown(
+            "- Human review recommended: "
+            f"{_bool_label(checks_payload.get('human_review_recommended')).title()}"
+        )
+        context_coverage = str(checks_payload.get("context_coverage_label") or "").strip()
+        if context_coverage:
+            st.markdown(f"- Context coverage: {context_coverage.title()}")
+        coverage_score = checks_payload.get("context_coverage_score")
+        if isinstance(coverage_score, (int, float)):
+            st.markdown(f"- Context coverage score: {float(coverage_score):.3f}")
 
 
 def _format_brief_scalar(value: object, *, empty_fallback: str = "Insufficient evidence in retrieved context.") -> str:
@@ -512,7 +624,7 @@ def _render_publishing_mode() -> None:
         )
     with action_column:
         st.markdown("<div style='height: 1.8rem;'></div>", unsafe_allow_html=True)
-        if st.button("Add to library", key="publishing_add_to_library"):
+        if st.button("Add to Library", key="publishing_add_to_library"):
             activate_document_workspace(selected_doc_id)
             st.session_state.workspace_mode = "Study Mode"
             selected_label = label_by_doc_id.get(selected_doc_id, selected_doc_id)
@@ -558,19 +670,19 @@ def _render_publishing_mode() -> None:
 
         ask_response = st.session_state.publishing_last_ask_response
         if isinstance(ask_response, dict):
-            st.markdown("### Grounded Answer")
+            st.markdown("### Answer")
             st.write(str(ask_response.get("answer") or "No answer returned."))
             warning = ask_response.get("metadata", {}).get("warning") if isinstance(ask_response.get("metadata"), dict) else None
             if isinstance(warning, str) and warning.strip():
                 st.warning(warning)
-            _render_workflow_trace_panel(ask_response.get("workflow_trace"))
-            _render_quality_checks_block(ask_response.get("quality_checks"))
             _publishing_source_expander(
                 cast(list[object], ask_response.get("sources", [])),
-                title="Evidence Used",
+                title="Sources used",
+                document_id=selected_doc_id,
             )
-            st.markdown("#### Run Details")
-            _publishing_run_details_block(ask_response)
+            _render_workflow_trace_panel(ask_response.get("workflow_trace"))
+            _render_quality_checks_block(ask_response.get("quality_checks"))
+            _render_run_details_panel(ask_response)
 
     with book_brief_tab:
         st.caption("Generate a source-grounded positioning brief for editorial, marketing, and sales alignment.")
@@ -615,14 +727,14 @@ def _render_publishing_mode() -> None:
         brief_response = st.session_state.publishing_last_book_brief_response
         if isinstance(brief_response, dict):
             _render_positioning_brief(brief_response)
-            _render_workflow_trace_panel(brief_response.get("workflow_trace"))
-            _render_quality_checks_block(brief_response.get("quality_checks"))
             _publishing_source_expander(
                 cast(list[object], brief_response.get("sources", [])),
-                title="Evidence Used",
+                title="Sources used",
+                document_id=selected_doc_id,
             )
-            st.markdown("#### Run Details")
-            _publishing_run_details_block(brief_response)
+            _render_workflow_trace_panel(brief_response.get("workflow_trace"))
+            _render_quality_checks_block(brief_response.get("quality_checks"))
+            _render_run_details_panel(brief_response)
             _render_publishing_run_feedback(
                 response_payload=brief_response,
                 section_key="book_brief",
@@ -700,14 +812,14 @@ def _render_publishing_mode() -> None:
                         st.caption(cleaned_rationale)
                 else:
                     st.write(cleaned_rationale)
-            _render_workflow_trace_panel(marketing_response.get("workflow_trace"))
-            _render_quality_checks_block(marketing_response.get("quality_checks"))
             _publishing_source_expander(
                 cast(list[object], marketing_response.get("sources", [])),
-                title="Evidence Used",
+                title="Sources used",
+                document_id=selected_doc_id,
             )
-            st.markdown("#### Run Details")
-            _publishing_run_details_block(marketing_response)
+            _render_workflow_trace_panel(marketing_response.get("workflow_trace"))
+            _render_quality_checks_block(marketing_response.get("quality_checks"))
+            _render_run_details_panel(marketing_response)
             _render_publishing_run_feedback(
                 response_payload=marketing_response,
                 section_key="marketing_copy",
@@ -1384,7 +1496,11 @@ def _render_message_history() -> None:
             st.markdown(message["content"])
             if message["role"] == "assistant":
                 _render_action_lanes(message)
-            render_source_list(message.get("citations", []), caption="Sources used")
+            render_source_list(
+                message.get("citations", []),
+                sources=message.get("sources"),
+                caption="Sources used",
+            )
             if message["role"] == "assistant":
                 render_message_feedback_form(message)
 
@@ -1600,6 +1716,7 @@ def _handle_question(question: str) -> None:
         "assistant",
         answer_message,
         citations=answer_citations,
+        sources=structured.sources,
         topic=conversation_topic,
         query=question,
         mode=detected_mode,
@@ -2298,19 +2415,21 @@ def render_study_plan(study_plan: StudyPlan) -> None:
     render_source_list(st.session_state.study_plan_citations)
 
 
-def render_source_list(citations: list[str], caption: str = "Sources") -> None:
+def render_source_list(
+    citations: list[str],
+    *,
+    sources: object = None,
+    caption: str = "Sources",
+) -> None:
     """Render a list of citations with an optional caption.
     
     Args:
         citations (list[str]): Citation strings to format or display.
+        sources (object): Optional rich source rows (citation/text/score/chunk_id).
         caption (str): Input parameter.
     """
-
-    if not citations:
-        return
-    st.caption(caption)
-    for citation in citations:
-        st.markdown(f"- {citation}")
+    normalized_sources = sources if isinstance(sources, list) else None
+    _render_sources_panel(title=caption, citations=citations, sources=normalized_sources)
 
 
 

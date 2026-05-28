@@ -108,6 +108,7 @@ class StructuredAnswer(BaseModel):
 
     answer: str
     citations: list[str] = Field(default_factory=list)
+    sources: list[dict[str, object]] = Field(default_factory=list)
     info_lane: InfoLane | None = None
     quiz_lane: QuizLane | None = None
     used_fallback: bool = False

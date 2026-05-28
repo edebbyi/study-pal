@@ -365,6 +365,7 @@ def store_message(
     role: str,
     content: str,
     citations: list[str] | None = None,
+    sources: list[dict[str, object]] | None = None,
     topic: str | None = None,
     query: str | None = None,
     mode: AppMode | None = None,
@@ -381,6 +382,7 @@ def store_message(
         role (str): Message role (user or assistant).
         content (str): Message content.
         citations (list[str] | None): Optional citations for assistant messages.
+        sources (list[dict[str, object]] | None): Optional source rows with citation/snippet metadata.
         topic (str | None): Conversation topic label.
         query (str | None): Original query string.
         mode (AppMode | None): Mode associated with the message.
@@ -396,6 +398,8 @@ def store_message(
         message["id"] = generate_message_id()
     if citations:
         message["citations"] = citations
+    if sources:
+        message["sources"] = sources
     if topic:
         message["topic"] = topic
     if query:
