@@ -9,19 +9,12 @@ from pypdf import PdfReader
 
 from src.core.config import settings
 from src.core.models import Document, Page, SourceType
-from src.core.utils import clean_text
+from src.core.utils import clean_ocr_text
 
 
 
 def _read_size(uploaded_file: BinaryIO) -> int:
-    """Read file size without changing the current file pointer.
-    
-    Args:
-        uploaded_file (BinaryIO): Input parameter.
-    
-    Returns:
-        int: Computed integer result.
-    """
+    """Return file size in bytes without changing the caller's read position."""
 
     current_position = uploaded_file.tell()  # preserve caller's read position
     uploaded_file.seek(0, 2)
@@ -32,14 +25,7 @@ def _read_size(uploaded_file: BinaryIO) -> int:
 
 
 def validate_uploaded_file(uploaded_file: BinaryIO) -> str:
-    """Validate file type and size before ingestion.
-    
-    Args:
-        uploaded_file (BinaryIO): Input parameter.
-    
-    Returns:
-        str: Formatted text result.
-    """
+    """Validate file extension and size, then return the normalized source type."""
 
     suffix = Path(uploaded_file.name).suffix.lower().lstrip(".")
     if suffix not in settings.allowed_file_types:
@@ -53,33 +39,20 @@ def validate_uploaded_file(uploaded_file: BinaryIO) -> str:
 
 
 def extract_pdf(uploaded_file: BinaryIO) -> list[Page]:
-    """Extract text from a PDF into page objects.
-    
-    Args:
-        uploaded_file (BinaryIO): Input parameter.
-    
-    Returns:
-        list[Page]: List of results.
-    """
+    """Read a PDF and return cleaned page text as Page objects."""
 
     uploaded_file.seek(0)
     reader = PdfReader(uploaded_file)
     pages: list[Page] = []
     for index, page in enumerate(reader.pages, start=1):
-        pages.append(Page(page_number=index, text=clean_text(page.extract_text() or "")))
+        raw_text = page.extract_text() or ""
+        pages.append(Page(page_number=index, text=clean_ocr_text(raw_text)))
     return pages
 
 
 
 def extract_text_file(uploaded_file: BinaryIO) -> list[Page]:
-    """Extract text from a plain text or markdown file.
-    
-    Args:
-        uploaded_file (BinaryIO): Input parameter.
-    
-    Returns:
-        list[Page]: List of results.
-    """
+    """Read a text/markdown file and return one cleaned Page object."""
 
     uploaded_file.seek(0)
     raw = uploaded_file.read()
@@ -87,20 +60,12 @@ def extract_text_file(uploaded_file: BinaryIO) -> list[Page]:
         text = raw.decode("utf-8", errors="ignore")  # ignore odd encodings instead of failing upload
     else:
         text = str(raw)
-    return [Page(page_number=1, text=clean_text(text))]
+    return [Page(page_number=1, text=clean_ocr_text(text))]
 
 
 
 def build_document(uploaded_file: BinaryIO, session_id: str) -> Document:
-    """Build a Document model from an uploaded file.
-    
-    Args:
-        uploaded_file (BinaryIO): Input parameter.
-        session_id (str): Session identifier for the current chat.
-    
-    Returns:
-        Document: Result value.
-    """
+    """Build a Document model from one uploaded file."""
 
     source_type = cast(SourceType, validate_uploaded_file(uploaded_file))
     if source_type == "pdf":

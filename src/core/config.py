@@ -25,10 +25,35 @@ def _load_secrets() -> dict[str, str]:
     try:
         with secrets_path.open("rb") as secrets_file:
             raw_secrets = tomllib.load(secrets_file)
-    except (OSError, tomllib.TOMLDecodeError):
+        return {key: str(value) for key, value in raw_secrets.items()}
+    except OSError:
         return {}
+    except tomllib.TOMLDecodeError:
+        # If TOML parsing fails, try a simple line-by-line fallback so
+        # common KEY="value" entries can still be read.
+        fallback_values: dict[str, str] = {}
+        try:
+            raw_text = secrets_path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            return {}
+        for raw_line in raw_text.splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            cleaned_value = value.strip()
+            if (
+                (cleaned_value.startswith('"') and cleaned_value.endswith('"'))
+                or (cleaned_value.startswith("'") and cleaned_value.endswith("'"))
+            ):
+                cleaned_value = cleaned_value[1:-1]
+            if key:
+                fallback_values[key] = cleaned_value
+        return fallback_values
 
-    return {key: str(value) for key, value in raw_secrets.items()}
 
 
 def _load_dotenv() -> dict[str, str]:
@@ -63,7 +88,7 @@ def _load_dotenv() -> dict[str, str]:
 
 
 def _read_setting(name: str, default: str, dotenv: dict[str, str], secrets: dict[str, str]) -> str:
-    """Read a setting from env vars with secrets fallback.
+    """Read one setting with clear priority order.
 
     Args:
         name (str): Environment variable name.
@@ -72,13 +97,25 @@ def _read_setting(name: str, default: str, dotenv: dict[str, str], secrets: dict
         secrets (dict[str, str]): Secrets map loaded from disk.
 
     Returns:
-        str: Resolved setting value.
+        str: Final setting value.
     """
-    return os.getenv(name, dotenv.get(name, secrets.get(name, default)))
+    env_value = os.getenv(name)
+    if env_value is not None and env_value.strip() != "":
+        return env_value
+
+    dotenv_value = dotenv.get(name)
+    if dotenv_value is not None and dotenv_value.strip() != "":
+        return dotenv_value
+
+    secret_value = secrets.get(name)
+    if secret_value is not None and secret_value.strip() != "":
+        return secret_value
+
+    return default
 
 
 def _read_bool_setting(name: str, default: bool, dotenv: dict[str, str], secrets: dict[str, str]) -> bool:
-    """Read a boolean setting from env vars with secrets fallback.
+    """Read one boolean setting using the same priority order as _read_setting.
 
     Args:
         name (str): Environment variable name.
@@ -131,8 +168,24 @@ class Settings:
     langfuse_prompt_study_plan: str
     langfuse_prompt_follow_up: str
     langfuse_prompt_version: str
+    langfuse_use_answer_prompt_template: bool
+    phoenix_collector_endpoint: str
+    phoenix_project_name: str
+    phoenix_api_key: str
+    mlflow_tracking_uri: str
+    mlflow_experiment_name: str
+    app_env: str
+    prompt_version: str
+    retrieval_algorithm: str
     rerank_model: str
     rerank_candidates: int
+    api_rate_limit_window_seconds: int
+    api_rate_limit_ask_requests: int
+    api_rate_limit_publishing_requests: int
+    api_rate_limit_feedback_requests: int
+    api_timeout_ask_seconds: int
+    api_timeout_positioning_seconds: int
+    api_timeout_marketing_seconds: int
 
     @classmethod
     def load(cls) -> "Settings":
@@ -204,8 +257,42 @@ class Settings:
                 secrets,
             ),
             langfuse_prompt_version=_read_setting("LANGFUSE_PROMPT_VERSION", "", dotenv, secrets),
+            langfuse_use_answer_prompt_template=_read_bool_setting(
+                "LANGFUSE_USE_ANSWER_PROMPT_TEMPLATE",
+                True,
+                dotenv,
+                secrets,
+            ),
+            phoenix_collector_endpoint=_read_setting("PHOENIX_COLLECTOR_ENDPOINT", "", dotenv, secrets),
+            phoenix_project_name=_read_setting("PHOENIX_PROJECT_NAME", "StudyPal", dotenv, secrets),
+            phoenix_api_key=_read_setting("PHOENIX_API_KEY", "", dotenv, secrets),
+            mlflow_tracking_uri=_read_setting("MLFLOW_TRACKING_URI", "", dotenv, secrets),
+            mlflow_experiment_name=_read_setting(
+                "MLFLOW_EXPERIMENT_NAME",
+                "StudyPal Publishing Mode",
+                dotenv,
+                secrets,
+            ),
+            app_env=_read_setting("APP_ENV", "local", dotenv, secrets),
+            prompt_version=_read_setting("PROMPT_VERSION", "", dotenv, secrets),
+            retrieval_algorithm=_read_setting("RETRIEVAL_ALGORITHM", "vector_similarity", dotenv, secrets),
             rerank_model=_read_setting("OPENROUTER_RERANK_MODEL", "", dotenv, secrets),
-            rerank_candidates=int(_read_setting("OPENROUTER_RERANK_CANDIDATES", "12", dotenv, secrets)),
+            rerank_candidates=int(_read_setting("OPENROUTER_RERANK_CANDIDATES", "40", dotenv, secrets)),
+            api_rate_limit_window_seconds=int(_read_setting("API_RATE_LIMIT_WINDOW_SECONDS", "60", dotenv, secrets)),
+            api_rate_limit_ask_requests=int(_read_setting("API_RATE_LIMIT_ASK_REQUESTS", "30", dotenv, secrets)),
+            api_rate_limit_publishing_requests=int(
+                _read_setting("API_RATE_LIMIT_PUBLISHING_REQUESTS", "20", dotenv, secrets)
+            ),
+            api_rate_limit_feedback_requests=int(
+                _read_setting("API_RATE_LIMIT_FEEDBACK_REQUESTS", "40", dotenv, secrets)
+            ),
+            api_timeout_ask_seconds=int(_read_setting("API_TIMEOUT_ASK_SECONDS", "30", dotenv, secrets)),
+            api_timeout_positioning_seconds=int(
+                _read_setting("API_TIMEOUT_POSITIONING_SECONDS", "45", dotenv, secrets)
+            ),
+            api_timeout_marketing_seconds=int(
+                _read_setting("API_TIMEOUT_MARKETING_SECONDS", "40", dotenv, secrets)
+            ),
         )
 
 

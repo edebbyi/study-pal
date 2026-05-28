@@ -1,5 +1,7 @@
 # Web app
 streamlit
+fastapi
+uvicorn
 
 # LLM + OpenRouter compatible client
 openai
@@ -23,6 +25,9 @@ tiktoken
 # Observability
 langfuse
 openlit
+arize-phoenix
+openinference-instrumentation-openai
+mlflow
 setuptools
 
 # Auth

@@ -54,6 +54,10 @@ class Chunk(BaseModel):
     document_summary: str | None = None
     topic: str | None = None
     chapter: str | None = None
+    chapter_index: int | None = None
+    page_start: int | None = None
+    page_end: int | None = None
+    chunk_index_in_page: int | None = None
     user_id: str | None = None
 
 
@@ -68,6 +72,10 @@ class RetrievedChunk(BaseModel):
     chunk_id: int
     chapter: str | None = None
     topic: str | None = None
+    chapter_index: int | None = None
+    page_start: int | None = None
+    page_end: int | None = None
+    chunk_index_in_page: int | None = None
 
 
 class TeachingResponse(BaseModel):
@@ -100,6 +108,7 @@ class StructuredAnswer(BaseModel):
 
     answer: str
     citations: list[str] = Field(default_factory=list)
+    sources: list[dict[str, object]] = Field(default_factory=list)
     info_lane: InfoLane | None = None
     quiz_lane: QuizLane | None = None
     used_fallback: bool = False

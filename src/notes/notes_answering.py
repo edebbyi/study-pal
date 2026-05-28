@@ -54,6 +54,29 @@ def _summarize_from_chunk(text: str) -> str:
     return summary
 
 
+def _snippet_from_chunk(text: str, limit: int = 380) -> str:
+    """Return a compact snippet for source evidence UI panels."""
+    cleaned = " ".join(text.strip().split())
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[:limit].rstrip() + "..."
+
+
+def _build_source_rows(chunks: list[RetrievedChunk]) -> list[dict[str, object]]:
+    """Convert retrieved chunks to UI-friendly source rows."""
+    rows: list[dict[str, object]] = []
+    for chunk in chunks:
+        rows.append(
+            {
+                "citation": chunk.citation,
+                "text": _snippet_from_chunk(chunk.text),
+                "chunk_id": str(chunk.chunk_id),
+                "score": float(chunk.score),
+            }
+        )
+    return rows
+
+
 def _clean_leading_fragment(text: str) -> str:
     """Remove stray punctuation or fragments at the start of a summary.
 
@@ -420,6 +443,7 @@ def build_structured_answer_response(question: str) -> StructuredAnswer:
         chat_history=last_turn_history,
     )
     structured.citations = collect_citations(retrieved_chunks)
+    structured.sources = _build_source_rows(retrieved_chunks)
     if retrieved_chunks and _is_notes_miss(structured.answer):  # Recover when the model misses despite context.
         best_chunk = _select_summary_chunk(question, retrieved_chunks) or retrieved_chunks[0]
         summary = _summarize_from_chunk(best_chunk.text)
@@ -429,6 +453,7 @@ def build_structured_answer_response(question: str) -> StructuredAnswer:
     if structured.used_fallback or _is_notes_miss(structured.answer):  # Hide action lanes on true misses.
         structured.used_fallback = True
         structured.citations = []
+        structured.sources = []
         structured.info_lane = None
         structured.quiz_lane = None
     return structured

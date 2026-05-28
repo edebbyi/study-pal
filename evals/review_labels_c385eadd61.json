@@ -1,0 +1,117 @@
+{
+  "doc_id": "c385eadd61",
+  "bundle_file": "evals/review_bundle_c385eadd61.json",
+  "current_index": 19,
+  "updated_at": "2026-05-26T23:44:59.809041+00:00",
+  "labels": {
+    "0::What causes Dorothy’s house to be carried away from Kansas?": [
+      "38",
+      "37"
+    ],
+    "1::Who is in the house with Dorothy when the cyclone lifts it?": [
+      "31",
+      "38",
+      "30"
+    ],
+    "2::What happens to the Wicked Witch of the East when Dorothy’s house lands?": [
+      "39",
+      "40",
+      "37"
+    ],
+    "3::What gift does Dorothy receive from the Witch of the North?": [
+      "42",
+      "39",
+      "200"
+    ],
+    "4::What road is Dorothy told to follow to reach the Emerald City?": [
+      "117",
+      "111",
+      "215"
+    ],
+    "5::Who is the first companion Dorothy meets on her journey?": [],
+    "6::What does the Scarecrow want from the Wizard?": [
+      "114"
+    ],
+    "7::Why does the Tin Woodman want a heart?": [
+      "170",
+      "249",
+      "168",
+      "143"
+    ],
+    "8::What does the Cowardly Lion want from the Wizard?": [
+      "114",
+      "173"
+    ],
+    "9::What obstacle do Dorothy and her friends face in the field of poppies?": [
+      "123",
+      "122",
+      "133"
+    ],
+    "10::Who helps rescue Dorothy and the Lion from the poppy field?": [
+      "135",
+      "125",
+      "134"
+    ],
+    "11::What must Dorothy and her friends do before the Wizard agrees to help them?": [
+      "165",
+      "180",
+      "228"
+    ],
+    "12::How does Dorothy destroy the Wicked Witch of the West?": [
+      "227",
+      "203",
+      "193"
+    ],
+    "13::What object allows Dorothy to return home?": [
+      "310",
+      "171"
+    ],
+    "14::What does Glinda reveal about the silver shoes?": [
+      "224",
+      "225"
+    ],
+    "15::What happens when Dorothy clicks the heels of the silver shoes together?": [
+      "236",
+      "225"
+    ],
+    "16::Who rules the Emerald City after the Wizard leaves?": [
+      "262",
+      "258",
+      "216"
+    ],
+    "17::Who becomes ruler of the Winkies after the Wicked Witch of the West is defeated?": [
+      "292"
+    ],
+    "18::What does the Wizard give the Scarecrow, Tin Woodman, and Lion instead of actual brain, heart, and courage?": [
+      "205",
+      "203",
+      "204"
+    ],
+    "19::Where does Dorothy find herself after using the silver shoes to return home?": [
+      "229",
+      "228"
+    ]
+  },
+  "feedback": {
+    "0::What causes Dorothy’s house to be carried away from Kansas?": "",
+    "1::Who is in the house with Dorothy when the cyclone lifts it?": "",
+    "2::What happens to the Wicked Witch of the East when Dorothy’s house lands?": "The retriever found the best chunk, but it ranked 177 first, which is a false positive about the Wicked Witch of the West, not the East. This question needs entity-sensitive retrieval: boost exact matches for “Wicked Witch of the East”, “house”, “fallen on her”, “feet sticking out”, and Chapter II. Down-rank chunks about the Wicked Witch of the West, especially later chapters where “wicked witch,” “destroy,” or “melted” appear but refer to a different character.",
+    "3::What gift does Dorothy receive from the Witch of the North?": "",
+    "4::What road is Dorothy told to follow to reach the Emerald City?": "",
+    "5::Who is the first companion Dorothy meets on her journey?": "",
+    "6::What does the Scarecrow want from the Wizard?": "",
+    "7::Why does the Tin Woodman want a heart?": "",
+    "8::What does the Cowardly Lion want from the Wizard?": "",
+    "9::What obstacle do Dorothy and her friends face in the field of poppies?": "The retriever found the right chunks, but ranked several unrelated later-chapter chunks above them. For this question, boost exact/proximate phrases like poppies, odor, falls asleep, Dorothy, Lion, and deadly flower bed. Down-rank generic mentions of “field,” “sleep,” “flowers,” or “Toto” unless they occur in Chapter VIII / the poppy-field scene.",
+    "10::Who helps rescue Dorothy and the Lion from the poppy field?": "",
+    "11::What must Dorothy and her friends do before the Wizard agrees to help them?": "",
+    "12::How does Dorothy destroy the Wicked Witch of the West?": "",
+    "13::What object allows Dorothy to return home?": "",
+    "14::What does Glinda reveal about the silver shoes?": "",
+    "15::What happens when Dorothy clicks the heels of the silver shoes together?": "",
+    "16::Who rules the Emerald City after the Wizard leaves?": "",
+    "17::Who becomes ruler of the Winkies after the Wicked Witch of the West is defeated?": "",
+    "18::What does the Wizard give the Scarecrow, Tin Woodman, and Lion instead of actual brain, heart, and courage?": "",
+    "19::Where does Dorothy find herself after using the silver shoes to return home?": ""
+  }
+}

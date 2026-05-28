@@ -4,3 +4,4 @@ myenv/
 __pycache__/
 .pytest_cache/
 .env
+data_samples/anatomy_example.pdf
