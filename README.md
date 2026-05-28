@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Study Pal is a Streamlit app for grounded Q&A over uploaded notes and guided mastery loops.
+Study Pal is a Streamlit app for grounded Q&A, mastery learning, and publishing workflows over uploaded documents.
 
 ## Tech Stack
 
@@ -34,7 +34,7 @@ Study Pal is a Streamlit app for grounded Q&A over uploaded notes and guided mas
 
 ### Study Mode
 
-![Study Pal demo](docs/demo.gif)
+![Study Pal demo](docs/ask-mode.gif)
 
 ### Publishing Mode
 
@@ -90,6 +90,12 @@ make api
 - API health: `curl http://localhost:8000/api/health`
 
 ## API At A Glance
+
+Publishing endpoint definitions:
+
+- `Ask the Book` (`POST /api/documents/<doc_id>/ask`): grounded question answering over one uploaded document, with source evidence.
+- `Positioning Brief` (`POST /api/publishing/<doc_id>/book-brief`): structured editorial/marketing summary (audience, themes, positioning angles, sales framing).
+- `Marketing Copy` (`POST /api/publishing/<doc_id>/marketing-copy`): channel-specific draft copy (for example back cover, newsletter, bookstore pitch, and social hooks), grounded in retrieved source chunks.
 
 | Route | Method | Purpose |
 | --- | --- | --- |
