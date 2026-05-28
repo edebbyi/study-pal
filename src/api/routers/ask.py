@@ -22,9 +22,7 @@ class AskRequest(BaseModel):
 def ask_the_book(payload: AskRequest) -> PlaceholderResponse:
     """Run RAG-style Ask the Book (placeholder)."""
     _ = payload
-    # TODO: Reuse retrieval + structured answer logic for publishing-safe "Ask the Book".
     return PlaceholderResponse(
         endpoint="/api/ask/book",
         message="Ask the Book is not implemented yet.",
     )
-

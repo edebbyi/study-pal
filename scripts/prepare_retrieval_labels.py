@@ -8,10 +8,10 @@ Usage:
     --catalog-out /tmp/doc_chunks.json \
     --row-out /tmp/eval_row.jsonl
 
-This script helps you:
+This script:
 1) export all chunks for a doc (for manual review),
 2) retrieve top-k candidate chunks for a question,
-3) produce a JSONL row template where you fill `relevant_chunk_ids`.
+3) produce a JSONL row template where `relevant_chunk_ids` can be filled during review.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from pathlib import Path
 if sys.version_info < (3, 11):
     raise SystemExit(
         "StudyPal scripts require Python 3.11+. "
-        "Run with your project env, for example: "
+        "Run with the project environment, for example: "
         "`myenv/bin/python scripts/prepare_retrieval_labels.py ...`"
     )
 
@@ -50,7 +50,7 @@ def _preview(text: str, limit: int = 220) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Prepare retrieval-labeling artifacts for one doc + question.")
-    parser.add_argument("--doc-id", required=True, help="Document id from your workspace/library.")
+    parser.add_argument("--doc-id", required=True, help="Document id from the workspace/library.")
     parser.add_argument("--question", required=True, help="Eval question text.")
     parser.add_argument("--user-id", default=None, help="Optional user id for scoped workspace retrieval.")
     parser.add_argument("--k", type=int, default=10, help="Top-k retrieval candidates to inspect.")

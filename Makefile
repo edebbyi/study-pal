@@ -50,8 +50,8 @@ eval-fill-retrieved:
 		--k $(K) \
 		--verbose \
 		$(if $(OUT_FILE),--out-file "$(OUT_FILE)",)
-eval-review-bundle:
-	@if [ -z "$(DOC_ID)" ]; then echo "DOC_ID is required. Example: make eval-review-bundle DOC_ID=c385eadd61"; exit 1; fi
+eval-review-set:
+	@if [ -z "$(DOC_ID)" ]; then echo "DOC_ID is required. Example: make eval-review-set DOC_ID=c385eadd61"; exit 1; fi
 	$(PYTHON) scripts/build_eval_review_bundle.py \
 		--eval-file $(EVAL_FILE) \
 		--doc-id "$(DOC_ID)" \
@@ -59,6 +59,7 @@ eval-review-bundle:
 		$(if $(CATALOG_FILE),--catalog-file "$(CATALOG_FILE)",) \
 		$(if $(REVIEW_MD),--out-md "$(REVIEW_MD)",) \
 		$(if $(REVIEW_JSON),--out-json "$(REVIEW_JSON)",)
+eval-review-bundle: eval-review-set
 eval-review-checklist:
 	@if [ -z "$(DOC_ID)" ]; then echo "DOC_ID is required. Example: make eval-review-checklist DOC_ID=c385eadd61"; exit 1; fi
 	$(STREAMLIT) run scripts/review_retrieval_checklist.py -- \

@@ -1757,7 +1757,7 @@ def _enter_mastery_mode(
             session_id=st.session_state.session_id,
         )
     except TypeError:
-        # Backward-compatibility path for older test doubles or helper signatures.
+        # Support older test doubles or helper signatures.
         mastery_session, mastery_progress = start_mastery_loop(
             question,
             fallback_topic=fallback_topic,

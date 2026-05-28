@@ -29,8 +29,8 @@ def _load_secrets() -> dict[str, str]:
     except OSError:
         return {}
     except tomllib.TOMLDecodeError:
-        # Be resilient to partially malformed secrets.toml files by
-        # extracting simple KEY="value" lines when TOML parsing fails.
+        # If TOML parsing fails, try a simple line-by-line fallback so
+        # common KEY="value" entries can still be read.
         fallback_values: dict[str, str] = {}
         try:
             raw_text = secrets_path.read_text(encoding="utf-8", errors="ignore")
@@ -88,7 +88,7 @@ def _load_dotenv() -> dict[str, str]:
 
 
 def _read_setting(name: str, default: str, dotenv: dict[str, str], secrets: dict[str, str]) -> str:
-    """Read a setting from env vars with secrets fallback.
+    """Read one setting with clear priority order.
 
     Args:
         name (str): Environment variable name.
@@ -97,7 +97,7 @@ def _read_setting(name: str, default: str, dotenv: dict[str, str], secrets: dict
         secrets (dict[str, str]): Secrets map loaded from disk.
 
     Returns:
-        str: Resolved setting value.
+        str: Final setting value.
     """
     env_value = os.getenv(name)
     if env_value is not None and env_value.strip() != "":
@@ -115,7 +115,7 @@ def _read_setting(name: str, default: str, dotenv: dict[str, str], secrets: dict
 
 
 def _read_bool_setting(name: str, default: bool, dotenv: dict[str, str], secrets: dict[str, str]) -> bool:
-    """Read a boolean setting from env vars with secrets fallback.
+    """Read one boolean setting using the same priority order as _read_setting.
 
     Args:
         name (str): Environment variable name.

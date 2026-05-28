@@ -26,7 +26,6 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 @router.get("", response_model=PlaceholderResponse)
 def list_documents() -> PlaceholderResponse:
     """List uploaded documents (placeholder)."""
-    # TODO: Return persisted document library entries scoped by authenticated user.
     return PlaceholderResponse(
         endpoint="/api/documents",
         message="Document listing is not implemented yet.",
@@ -36,7 +35,6 @@ def list_documents() -> PlaceholderResponse:
 @router.post("/upload", response_model=PlaceholderResponse)
 def upload_document() -> PlaceholderResponse:
     """Upload and index a document (placeholder)."""
-    # TODO: Reuse existing ingestion/chunking/indexing pipeline for backend uploads.
     return PlaceholderResponse(
         endpoint="/api/documents/upload",
         message="Document upload is not implemented yet.",

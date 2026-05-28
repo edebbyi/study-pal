@@ -1,6 +1,6 @@
 # Evaluation Runbook
 
-This guide covers offline retrieval evaluation, label prep, candidate backfilling, and human review bundle generation.
+This guide covers offline retrieval evaluation, label prep, candidate backfilling, and human review set generation.
 
 ## Metric Framework
 
@@ -20,7 +20,7 @@ Offline labeled metrics (ground truth required):
 - `Recall@k`
 - `MRR`
 
-## 1) Run Retrieval Evaluation Scaffold
+## 1) Run Baseline Retrieval Evaluation
 
 ```bash
 myenv/bin/python scripts/evaluate_retrieval.py --eval-file evals/publishing_eval_sample.jsonl --k 5
@@ -31,7 +31,7 @@ Notes:
 - `evals/publishing_eval_sample.jsonl` can include `retrieved_chunk_ids` for baseline/offline scoring.
 - Omit `retrieved_chunk_ids` to force live retrieval against indexed docs.
 
-## 2) Prepare Label-ready Rows
+## 2) Prepare Labeling Rows (Question + Candidate Chunks)
 
 ```bash
 myenv/bin/python scripts/prepare_retrieval_labels.py \
@@ -44,7 +44,7 @@ myenv/bin/python scripts/prepare_retrieval_labels.py \
 
 Then manually fill `relevant_chunk_ids` in generated rows.
 
-## 3) Batch-fill Retrieved Candidates
+## 3) Backfill Retrieved Chunk IDs
 
 ```bash
 myenv/bin/python scripts/fill_retrieved_chunk_ids.py \
@@ -59,7 +59,7 @@ Options:
 - `--force` overwrites existing retrieved IDs
 - `--out-file <path>` writes to a separate dataset file
 
-## 4) Build Human-review Bundles
+## 4) Build Human Review Set (Markdown + JSON)
 
 ```bash
 myenv/bin/python scripts/build_eval_review_bundle.py \
@@ -74,7 +74,7 @@ This refreshes:
 - `evals/chunk_catalog_c385eadd61.json`
 - markdown/json review outputs
 
-## 5) Offline Bundle Build With Catalog
+## 5) Build Review Set Offline From Existing Catalog
 
 ```bash
 myenv/bin/python scripts/build_eval_review_bundle.py \

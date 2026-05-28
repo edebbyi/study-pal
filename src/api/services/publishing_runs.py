@@ -44,7 +44,7 @@ CREATE INDEX IF NOT EXISTS publishing_runs_endpoint_idx
 def _ensure_runs_table(connection: sqlite3.Connection) -> None:
     """Ensure run table/indexes exist before reads/writes."""
     connection.execute(runs_table_ddl)
-    # Lightweight forward-compatible migration for older local DBs.
+    # Lightweight migration support for older local DBs.
     columns = {
         str(row[1]) for row in connection.execute("PRAGMA table_info(publishing_runs)").fetchall()
     }

@@ -65,10 +65,10 @@ def clean_text(text: str) -> str:
 
 
 def clean_ocr_text(text: str) -> str:
-    """Apply OCR/PDF cleanup heuristics before chunking.
+    """Clean OCR/PDF text before chunking.
 
-    This is intentionally conservative: it normalizes common OCR spacing
-    artifacts without attempting aggressive language reconstruction.
+    This does simple fixes for common spacing problems and avoids
+    heavy rewriting of the original text.
     """
     if not text:
         return ""
@@ -78,7 +78,7 @@ def clean_ocr_text(text: str) -> str:
     # Join words split by line-wrap hyphenation: "cyclo- ne" -> "cyclone".
     cleaned = re.sub(r"([A-Za-z])-\s+([A-Za-z])", r"\1\2", cleaned)
 
-    # Add missing boundaries often seen in OCR.
+    # Add missing spaces that OCR often drops.
     cleaned = re.sub(r"([a-z])([A-Z])", r"\1 \2", cleaned)
     cleaned = re.sub(r"([a-z])([.,;:!?])([A-Z])", r"\1\2 \3", cleaned)
     cleaned = re.sub(r"([a-z])([0-9])", r"\1 \2", cleaned)

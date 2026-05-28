@@ -268,7 +268,6 @@ def generate_marketing_copy(
 @router.post("/reader-persona", response_model=PlaceholderResponse)
 def generate_reader_persona() -> PlaceholderResponse:
     """Generate a reader persona (placeholder)."""
-    # TODO: Build persona extraction/classification from uploaded materials and reviews.
     return PlaceholderResponse(
         endpoint="/api/publishing/reader-persona",
         message="Reader Persona generation is not implemented yet.",

@@ -1,4 +1,4 @@
-"""rate_limit.py: Lightweight in-memory API rate limiting for abuse protection.
+"""rate_limit.py: Lightweight in-memory API rate limiting for protection.
 
 Notes:
 - This is process-local and best-effort for local/single-process deployments.

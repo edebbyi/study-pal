@@ -1,4 +1,4 @@
-"""build_eval_review_bundle.py: Build a human-review bundle for retrieval labeling.
+"""build_eval_review_bundle.py: Build a human-review set for retrieval labeling.
 
 This script reads eval JSONL rows and materializes question-level candidate chunks
 with full text into:
@@ -241,7 +241,7 @@ def _render_markdown(
     text_mode: str,
 ) -> str:
     lines: list[str] = []
-    lines.append(f"# Retrieval Review Bundle ({doc_id})")
+    lines.append(f"# Retrieval Review Set ({doc_id})")
     lines.append("")
     lines.append("Labeling flow per question:")
     lines.append("1. Read question + expected answer.")
@@ -288,7 +288,7 @@ def _render_markdown(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Build markdown/json review bundle from eval rows.")
+    parser = argparse.ArgumentParser(description="Build markdown/json review set from eval rows.")
     parser.add_argument("--eval-file", default="evals/publishing_eval_sample.jsonl")
     parser.add_argument("--doc-id", required=True)
     parser.add_argument("--user-id", default=None)
@@ -325,7 +325,7 @@ def main() -> None:
         "--candidate-k",
         type=int,
         default=10,
-        help="Number of candidate chunks to include per question in the review bundle.",
+        help="Number of candidate chunks to include per question in the review set.",
     )
     args = parser.parse_args()
 
@@ -498,7 +498,7 @@ def main() -> None:
 
     print(f"Review markdown: {out_md}")
     print(f"Review json: {out_json}")
-    print(f"Questions bundled: {len(bundle_rows)}")
+    print(f"Questions in review set: {len(bundle_rows)}")
 
 
 if __name__ == "__main__":

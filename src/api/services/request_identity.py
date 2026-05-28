@@ -1,10 +1,11 @@
-"""request_identity.py: Request-scoped user identity resolution helpers.
+"""Resolve a request user id from trusted request fields.
 
-Transitional auth boundary:
-- Primary identity source: Authorization Bearer token `sub` claim.
-- Secondary identity source: X-User-Id header.
-- query/body user_id are treated as untrusted compatibility hints and
-  only used for mismatch detection (not identity derivation).
+Identity priority:
+1. Bearer token subject (`sub`) from `Authorization`.
+2. `X-User-Id` header when no bearer token is present.
+
+Query/body `user_id` values are not used as the main identity source.
+They are only checked for conflicts with trusted identity values.
 """
 
 from __future__ import annotations
@@ -19,6 +20,10 @@ MAX_USER_ID_LENGTH = 256
 
 
 def _normalize(value: str | None) -> str | None:
+    """Trim and validate a user id value.
+
+    Returns None for empty values and raises 400 when the value is too long.
+    """
     if value is None:
         return None
     cleaned = value.strip()
@@ -33,7 +38,11 @@ def _normalize(value: str | None) -> str | None:
 
 
 def _extract_bearer_subject(authorization_header: str | None) -> str | None:
-    """Extract user id (`sub`) from bearer JWT payload (no signature verification)."""
+    """Read user id (`sub`) from a bearer token payload.
+
+    This checks token shape and decodes the payload, but does not verify
+    the JWT signature in this helper.
+    """
     raw = (authorization_header or "").strip()
     if not raw:
         return None
@@ -74,7 +83,14 @@ def resolve_request_user_id(
     query_user_id: str | None = None,
     body_user_id: str | None = None,
 ) -> str | None:
-    """Resolve a single request user id and reject identity-source mismatches."""
+    """Return one consistent user id for the request.
+
+    Rules:
+    - If a bearer token is present, its `sub` value is the source of truth.
+    - If no token is present, `X-User-Id` can be used.
+    - Query/body `user_id` values cannot act as primary identity.
+    - Conflicting identity values return an HTTP error.
+    """
     token_user_id = _extract_bearer_subject(request.headers.get("authorization"))
     header_user_id = _normalize(request.headers.get("x-user-id"))
     query_value = _normalize(query_user_id)
@@ -98,7 +114,7 @@ def resolve_request_user_id(
             )
         return header_user_id
 
-    # Query/body user_id are no longer accepted as primary identity sources.
+    # Query/body values are allowed only as conflict checks, not identity inputs.
     if query_value is not None or body_value is not None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

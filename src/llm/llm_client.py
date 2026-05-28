@@ -59,7 +59,7 @@ from src.llm.tracing import (
     update_generation as _update_generation,
 )
 
-# Backward-compatible re-export used by tests and callers.
+# Re-export for tests and existing imports.
 STRUCTURED_ANSWER_SCHEMA = _STRUCTURED_ANSWER_SCHEMA
 
 
@@ -71,11 +71,7 @@ class ChatClient:
 
 
 def _get_chat_client(api_key_override: str | None = None) -> ChatClient | None:
-    """Create a chat client when API credentials are available.
-    
-    Returns:
-        ChatClient | None: Result value.
-    """
+    """Return a configured chat client when an API key is available."""
 
     api_key = (api_key_override or "").strip() or get_effective_openrouter_api_key()
     if not api_key:
@@ -96,14 +92,7 @@ def _create_chat_completion(chat_client: ChatClient, **kwargs: Any) -> Any:
 
 
 def _build_context(retrieved_chunks: list[RetrievedChunk]) -> str:
-    """Build a compact context string from retrieved chunks.
-    
-    Args:
-        retrieved_chunks (list[RetrievedChunk]): Chunks returned from retrieval.
-    
-    Returns:
-        str: Formatted text result.
-    """
+    """Build one context string from retrieved chunks."""
 
     parts = []
     for chunk in retrieved_chunks:
@@ -113,14 +102,7 @@ def _build_context(retrieved_chunks: list[RetrievedChunk]) -> str:
 
 
 def _extract_message_text(response) -> str:
-    """Pull the message text out of a chat completion response.
-    
-    Args:
-        response: Input parameter.
-    
-    Returns:
-        str: Formatted text result.
-    """
+    """Return assistant message text from a chat completion response."""
 
     return (response.choices[0].message.content or "").strip()
 
@@ -144,15 +126,7 @@ _ANSWER_GENERATION_DEPS = AnswerGenerationDeps(
 
 
 def generate_document_metadata(filename: str, document_excerpt: str) -> DocumentMetadata | None:
-    """Generate document title, topic, and summary from an excerpt.
-    
-    Args:
-        filename (str): Filename associated with the document.
-        document_excerpt (str): Input parameter.
-    
-    Returns:
-        DocumentMetadata | None: Result value.
-    """
+    """Generate document title/topic/summary from a text excerpt."""
 
     if not document_excerpt.strip():
         return None

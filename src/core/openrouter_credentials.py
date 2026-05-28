@@ -23,13 +23,13 @@ def _streamlit_session_value(key: str) -> object | None:
     """Safely read a Streamlit session-state value.
 
     Prefer real Streamlit run context when available. Fall back to lightweight
-    module shims used in tests.
+    test module replacements used in unit tests.
     """
     streamlit_module = sys.modules.get("streamlit")
     if streamlit_module is None:
         return None
 
-    # Tests may inject a lightweight shim object as `streamlit`.
+    # Tests may inject a lightweight replacement object as `streamlit`.
     if getattr(streamlit_module, "__name__", "") != "streamlit":
         session_state = getattr(streamlit_module, "session_state", None)
         if session_state is None:

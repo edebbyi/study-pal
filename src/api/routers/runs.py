@@ -53,7 +53,7 @@ def save_run_feedback(
     payload: RunFeedbackRequest,
     _: None = Depends(enforce_feedback_rate_limit),
 ) -> PublishingRunRecord:
-    """Save richer user feedback while keeping backward-compatible run storage."""
+    """Save richer user feedback while preserving existing run storage format."""
     normalized_run_id = run_id.strip()
     if not normalized_run_id:
         raise HTTPException(

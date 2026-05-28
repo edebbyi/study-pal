@@ -25,60 +25,31 @@ _CHAPTER_PATTERNS = (
 
 
 def _sample_document_text(document: Document, max_pages: int = 5, max_chars: int = 5000) -> str:
-    """Create a short excerpt to summarize the document.
-    
-    Args:
-        document (Document): Document object to analyze.
-        max_pages (int): Input parameter.
-        max_chars (int): Input parameter.
-    
-    Returns:
-        str: Formatted text result.
-    """
+    """Build a short text excerpt for metadata generation."""
 
-    sampled_pages = document.pages[:max_pages]  # sample early pages to keep metadata generation cheap
+    # Use early pages to keep metadata calls lightweight.
+    sampled_pages = document.pages[:max_pages]
     excerpt = "\n\n".join(page.text for page in sampled_pages if page.text.strip())
     return excerpt[:max_chars]
 
 
 
 def _fallback_title(document: Document) -> str:
-    """Use a filename-based title when generation is unavailable.
-    
-    Args:
-        document (Document): Document object to analyze.
-    
-    Returns:
-        str: Formatted text result.
-    """
+    """Return a title derived from the filename."""
 
     return Path(document.filename).stem.replace("_", " ").replace("-", " ").title()
 
 
 
 def _fallback_topic(document: Document) -> str:
-    """Use a filename-based topic when generation is unavailable.
-    
-    Args:
-        document (Document): Document object to analyze.
-    
-    Returns:
-        str: Formatted text result.
-    """
+    """Return a topic label derived from the filename."""
 
     return _fallback_title(document)
 
 
 
 def _fallback_summary(document: Document) -> str:
-    """Build a short summary from the opening pages.
-    
-    Args:
-        document (Document): Document object to analyze.
-    
-    Returns:
-        str: Formatted text result.
-    """
+    """Return a short summary based on the first pages."""
 
     excerpt = _sample_document_text(document, max_pages=2, max_chars=240)
     if excerpt:
@@ -88,14 +59,7 @@ def _fallback_summary(document: Document) -> str:
 
 
 def extract_document_metadata(document: Document) -> DocumentMetadata:
-    """Extract title, topic, and summary for a document.
-    
-    Args:
-        document (Document): Document object to analyze.
-    
-    Returns:
-        DocumentMetadata: Result value.
-    """
+    """Return generated metadata, or fallback metadata when generation fails."""
 
     metadata = generate_document_metadata(document.filename, _sample_document_text(document))
     if metadata is not None:
@@ -111,26 +75,19 @@ def extract_document_metadata(document: Document) -> DocumentMetadata:
 
 
 def detect_chapters(document: Document) -> dict[int, str]:
-    """Try to detect chapter headings by page.
-    
-    Args:
-        document (Document): Document object to analyze.
-    
-    Returns:
-        dict[int, str]: Mapping of computed results.
-    """
+    """Detect likely chapter headings and map them by page number."""
 
     chapters_by_page: dict[int, str] = {}
     current_chapter: str | None = None
 
     for page in document.pages:
-        # Run chapter detection on a cleaned preview to offset OCR spacing artifacts.
+        # Clean the preview text first so OCR spacing issues are less likely to hide chapter labels.
         preview = clean_ocr_text(page.text[:1600])
         for pattern in _CHAPTER_PATTERNS:
             match = pattern.search(preview)
             if match is not None:
                 raw_heading = match.group(0).strip()
-                # Keep compact heading label to stabilize chapter tags.
+                # Normalize spacing so chapter labels stay consistent.
                 current_chapter = re.sub(r"\s{2,}", " ", raw_heading).title()
                 break
         chapters_by_page[page.page_number] = current_chapter or "Overview"

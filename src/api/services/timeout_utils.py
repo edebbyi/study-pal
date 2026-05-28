@@ -20,7 +20,7 @@ def run_with_timeout(
     fn: Callable[..., _T],
     **kwargs: object,
 ) -> _T:
-    """Execute a callable with a hard timeout budget."""
+    """Run a function and stop waiting when the timeout is reached."""
     if timeout_seconds <= 0:
         return fn(**kwargs)
 

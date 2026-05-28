@@ -10,7 +10,7 @@ What it does:
 2) autosaves checked chunk ids to a local state file,
 3) captures optional reviewer feedback notes,
 4) can write labels/notes back into:
-   - the review bundle JSON (`rows[].relevant_chunk_ids`), and/or
+   - the review set JSON (`rows[].relevant_chunk_ids`), and/or
    - eval JSONL rows (`relevant_chunk_ids`).
 """
 
@@ -241,14 +241,14 @@ def main() -> None:
     st.title("Retrieval Checklist Review")
 
     if not bundle_path.exists():
-        st.error(f"Bundle file not found: {bundle_path}")
+        st.error(f"Review set file not found: {bundle_path}")
         st.stop()
 
     bundle_payload = _load_json(bundle_path)
     doc_id = str(bundle_payload.get("doc_id") or "").strip()
     rows = bundle_payload.get("rows")
     if not doc_id or not isinstance(rows, list) or not rows:
-        st.error("Bundle JSON is missing a usable `doc_id` or `rows`.")
+        st.error("Review set JSON is missing a usable `doc_id` or `rows`.")
         st.stop()
 
     state_path = Path(args.state_file) if args.state_file else _default_state_path(bundle_path, doc_id)
@@ -268,7 +268,7 @@ def main() -> None:
     total_selected = 0
 
     st.sidebar.subheader("Files")
-    st.sidebar.text(f"Bundle: {bundle_path}")
+    st.sidebar.text(f"Review set: {bundle_path}")
     st.sidebar.text(f"Eval JSONL: {eval_path}")
     st.sidebar.text(f"Label state: {state_path}")
     show_debug_retrieval = st.sidebar.checkbox("Show retrieval debug details", value=False)
@@ -414,7 +414,7 @@ def main() -> None:
     )
     st.divider()
     st.markdown("### Save Labels")
-    st.caption("Saves to both eval JSONL (source of truth) and review bundle JSON (readable mirror).")
+    st.caption("Saves to both eval JSONL (source of truth) and review set JSON (readable mirror).")
     if st.button("Save labels", type="primary", use_container_width=True):
         if not eval_path.exists():
             st.error(f"Eval file not found: {eval_path}")
@@ -437,7 +437,7 @@ def main() -> None:
                 feedback=all_feedback,
             )
             _write_json(bundle_path, updated_payload)
-            message += f" | Updated bundle rows: {bundle_changed}"
+            message += f" | Updated review-set rows: {bundle_changed}"
 
             st.success(message)
             no_support_count = 0

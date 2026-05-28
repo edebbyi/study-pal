@@ -23,9 +23,7 @@ class EvaluationRunRequest(BaseModel):
 def log_run(payload: EvaluationRunRequest) -> PlaceholderResponse:
     """Log a run/evaluation record (placeholder)."""
     _ = payload
-    # TODO: Persist run metadata (latency, model, citations, user feedback) for later analysis.
     return PlaceholderResponse(
         endpoint="/api/evaluation/runs",
         message="Run logging is not implemented yet.",
     )
-
