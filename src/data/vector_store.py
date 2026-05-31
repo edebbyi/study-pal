@@ -322,7 +322,7 @@ def _chunk_from_metadata(vector_id: str, metadata: dict) -> Chunk:
 def rebuild_document_library_from_remote(
     *,
     user_id: str | None = None,
-    max_vectors: int = 1000,
+    max_vectors: int | None = None,
 ) -> list[dict[str, object]]:
     """Rebuild workspace records from the remote vector store.
 
@@ -335,6 +335,7 @@ def rebuild_document_library_from_remote(
     indexes = get_pinecone_indexes()
     if not indexes:
         return []
+    scan_limit = max(100, int(max_vectors if max_vectors is not None else settings.pinecone_workspace_scan_limit))
 
     remote_chunks: list[Chunk] = []
     for index in indexes:
@@ -342,8 +343,8 @@ def rebuild_document_library_from_remote(
             vector_ids: list[str] = []
             for id_batch in index.list(limit=100):
                 vector_ids.extend(id_batch)
-                if len(vector_ids) >= max_vectors:
-                    vector_ids = vector_ids[:max_vectors]
+                if len(vector_ids) >= scan_limit:
+                    vector_ids = vector_ids[:scan_limit]
                     break
 
             if not vector_ids:

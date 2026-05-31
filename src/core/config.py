@@ -154,6 +154,7 @@ class Settings:
     pinecone_api_key: str
     pinecone_host: str
     pinecone_index_name: str
+    pinecone_workspace_scan_limit: int
     supabase_url: str
     supabase_public_key: str
     supabase_redirect_url: str
@@ -223,6 +224,7 @@ class Settings:
             pinecone_api_key=_read_setting("PINECONE_API_KEY", "", dotenv, secrets),
             pinecone_host=_read_setting("PINECONE_HOST", "", dotenv, secrets),
             pinecone_index_name=_read_setting("PINECONE_INDEX_NAME", "study-pal", dotenv, secrets),
+            pinecone_workspace_scan_limit=int(_read_setting("PINECONE_WORKSPACE_SCAN_LIMIT", "20000", dotenv, secrets)),
             supabase_url=_read_setting("SUPABASE_URL", "", dotenv, secrets),
             supabase_public_key=_read_setting("SUPABASE_PUBLIC_KEY", "", dotenv, secrets),
             supabase_redirect_url=_read_setting("SUPABASE_REDIRECT_URL", "", dotenv, secrets),
