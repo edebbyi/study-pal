@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: studypal-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile.api
+    autoDeploy: true
+    healthCheckPath: /api/health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: SUPABASE_REDIRECT_URL
+        value: https://study-pal-jdgiretgdo6jxesd8evdjd.streamlit.app/
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_KEY_ENCRYPTION_SECRET
+        sync: false
+      - key: PINECONE_API_KEY
+        sync: false
+      - key: PINECONE_HOST
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLIC_KEY
+        sync: false
+      - key: OPENROUTER_CHAT_MODEL
+        value: openai/gpt-4.1-mini
+      - key: OPENROUTER_EMBEDDING_MODEL
+        value: text-embedding-3-small
+      - key: OPENROUTER_BASE_URL
+        value: https://openrouter.ai/api/v1
