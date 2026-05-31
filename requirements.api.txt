@@ -1,0 +1,21 @@
+# FastAPI API runtime dependencies (lean set for Render/Cloud Run API deploys)
+fastapi
+uvicorn
+
+# LLM + retrieval stack used by API services
+openai
+pinecone
+tiktoken
+pypdf
+
+# Auth and persistence
+supabase
+psycopg[binary]
+cryptography
+
+# Core validation/models
+pydantic
+python-multipart
+
+# Optional-but-used integrations (safe to keep in API runtime)
+langfuse
