@@ -219,11 +219,9 @@ def query_remote_chunks(
         return _normalize_matches(response.matches)
 
     if document_id:
-        # Multi-tenant safety: never query a document-scoped remote index without user scope.
-        if not user_id:
-            return []
         filter_payload: dict[str, object] = {"document_id": {"$eq": document_id}}
-        filter_payload = {"$and": [filter_payload, {"user_id": {"$eq": user_id}}]}
+        if user_id:
+            filter_payload = {"$and": [filter_payload, {"user_id": {"$eq": user_id}}]}
         for index in indexes:
             result = _run_query(index, filter_payload)
             if result is not None:
@@ -415,3 +413,105 @@ def rebuild_document_library_from_remote(
 
     workspaces.sort(key=lambda workspace: str(workspace.get("filename", "")))
     return workspaces
+
+
+def fetch_document_workspace_from_remote(
+    *,
+    document_id: str,
+    user_id: str | None = None,
+    top_k: int = 64,
+) -> dict[str, object] | None:
+    """Fetch one workspace directly by document id from Pinecone metadata.
+
+    This avoids broad index scans and is safer for hosted API environments where
+    local filesystem cache state is unavailable.
+    """
+    normalized_doc_id = document_id.strip()
+    if not normalized_doc_id:
+        return None
+
+    indexes = get_pinecone_indexes()
+    if not indexes:
+        return None
+
+    base_filter: dict[str, object] = {"document_id": {"$eq": normalized_doc_id}}
+    scoped_filter: dict[str, object] = (
+        {"$and": [base_filter, {"user_id": {"$eq": user_id}}]} if user_id else base_filter
+    )
+    probe_dimensions = [settings.embedding_dimensions, 1536, 3072]
+    probe_dimensions = list(dict.fromkeys([dim for dim in probe_dimensions if isinstance(dim, int) and dim > 0]))
+
+    def _run_workspace_query(index: object, filter_payload: dict[str, object]) -> list[Chunk] | None:
+        for dimension in probe_dimensions:
+            try:
+                response = index.query(
+                    vector=[0.0] * dimension,
+                    top_k=max(1, int(top_k)),
+                    include_metadata=True,
+                    filter=filter_payload,
+                )
+            except (PineconeApiException, PineconeConfigurationError, PineconeProtocolError, Exception):
+                continue
+
+            matches = getattr(response, "matches", None) or []
+            chunks: list[Chunk] = []
+            for match in matches:
+                metadata = getattr(match, "metadata", None) or {}
+                match_id = str(getattr(match, "id", "") or "")
+                if not metadata or not match_id:
+                    continue
+                chunks.append(_chunk_from_metadata(match_id, metadata))
+            return chunks
+        return None
+
+    for index in indexes:
+        chunks = _run_workspace_query(index, scoped_filter)
+        if chunks is None:
+            continue
+
+        if not chunks and user_id:
+            # Fallback for legacy vectors where `user_id` metadata may be missing.
+            chunks = _run_workspace_query(index, base_filter) or []
+
+        if not chunks:
+            continue
+
+        chunks.sort(key=lambda chunk: chunk.chunk_id)
+        first_chunk = chunks[0]
+        document_title = first_chunk.document_title or first_chunk.filename.rsplit(".", 1)[0].replace("_", " ").title()
+        document_topic = first_chunk.topic or document_title
+        document_summary = first_chunk.document_summary
+        session_id = first_chunk.session_id or f"doc-{normalized_doc_id}"
+        owner_user_id = first_chunk.user_id
+
+        return {
+            "document_id": first_chunk.document_id or normalized_doc_id,
+            "session_id": session_id,
+            "user_id": owner_user_id,
+            "filename": first_chunk.filename,
+            "document_title": document_title,
+            "document_topic": document_topic,
+            "document_summary": document_summary,
+            "chunks": chunks,
+            "size_mb": 0.0,
+            "chunk_count": len(chunks),
+            "last_conversation_topic": None,
+            "last_opened_at": None,
+            "messages": [],
+            "message_feedback": {},
+            "current_mode": "ask",
+            "conversation_topic": None,
+            "study_topic": None,
+            "mastery_intro": None,
+            "mastery_intro_citations": [],
+            "remediation_message": None,
+            "remediation_citations": [],
+            "mastery_status": "idle",
+            "current_quiz": None,
+            "quiz_round": 0,
+            "last_quiz_result": None,
+            "weak_concepts": [],
+            "study_plan": None,
+            "study_plan_citations": [],
+        }
+    return None

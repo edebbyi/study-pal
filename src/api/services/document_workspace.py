@@ -5,7 +5,10 @@ from __future__ import annotations
 from src.core.models import Chunk, RetrievedChunk
 from src.data.index_cache import restore_document_library
 from src.data.retrieval import retrieve_chunks
-from src.data.vector_store import rebuild_document_library_from_remote
+from src.data.vector_store import (
+    fetch_document_workspace_from_remote,
+    rebuild_document_library_from_remote,
+)
 
 
 class DocumentWorkspaceNotFoundError(ValueError):
@@ -81,6 +84,12 @@ def find_workspace(doc_id: str, user_id: str | None) -> dict[str, object] | None
     for workspace in remote_workspaces:
         if workspace_document_id(workspace) == normalized_doc_id:
             return workspace
+    direct_remote_workspace = fetch_document_workspace_from_remote(
+        document_id=normalized_doc_id,
+        user_id=user_id,
+    )
+    if direct_remote_workspace and workspace_document_id(direct_remote_workspace) == normalized_doc_id:
+        return direct_remote_workspace
     return None
 
 
@@ -106,7 +115,8 @@ def retrieve_workspace_context(
 ) -> list[RetrievedChunk]:
     """Retrieve grounded chunks for a question within one workspace."""
     chunks = workspace_chunks(workspace)
-    if not chunks:
+    document_id = workspace_document_id(workspace)
+    if not chunks and not document_id:
         raise DocumentRetrievalError("Document exists but has no indexed chunks.")
 
     resolved_user_id = workspace_user_id(workspace) or normalize_user_id(user_id)
@@ -114,7 +124,7 @@ def retrieve_workspace_context(
         question=question,
         chunks=chunks,
         session_id=workspace_session_id(workspace),
-        document_id=workspace_document_id(workspace),
+        document_id=document_id or None,
         user_id=resolved_user_id,
         top_k=top_k,
         use_rerank=use_rerank,
